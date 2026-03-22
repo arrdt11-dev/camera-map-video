@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+
 from jose import jwt
 from passlib.context import CryptContext
 
@@ -16,10 +17,24 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(user_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
     payload = {
         "sub": user_id,
         "exp": expire,
         "type": "access",
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(
+        token,
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )
