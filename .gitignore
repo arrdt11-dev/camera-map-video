@@ -1,7 +1,23 @@
-.venv
+# virtual env
+.venv/
+
+# python cache
 __pycache__/
 *.pyc
+*.pyo
+
+# env
 .env
+
+# IDE
 .idea/
+.vscode/
+
+# alembic
 alembic/versions/*.pyc
+
+# local folders
 production-control/
+
+# macOS
+.DS_Store
