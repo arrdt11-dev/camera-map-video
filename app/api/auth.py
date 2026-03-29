@@ -1,31 +1,47 @@
+import hashlib
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.models.user import User
-from app.schemas.auth import RegisterRequest, TokenResponse
-from app.services.auth import (
+from app.api.deps import get_current_user
+from app.core.config import settings
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    get_token_subject,
     hash_password,
     verify_password,
-    create_access_token,
-    decode_token,
 )
+from app.db.session import get_db
+from app.models.refresh_token import RefreshToken
+from app.models.user import User
+from app.schemas.auth import (
+    LoginRequest,
+    MessageResponse,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+)
+from app.schemas.user import UserRead
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == payload.email))
-    existing_user = result.scalar_one_or_none()
-
+@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+async def register(
+    payload: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    existing_user = await db.scalar(
+        select(User).where(User.email == payload.email)
+    )
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -39,70 +55,136 @@ async def register_user(payload: RegisterRequest, db: AsyncSession = Depends(get
         password_hash=hash_password(payload.password),
         organization=payload.organization,
         is_active=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    access_token = create_access_token(str(user.id))
-    return TokenResponse(access_token=access_token)
+    return user
 
 
-@router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
-async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    payload: LoginRequest,
     db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user = result.scalar_one_or_none()
+) -> TokenResponse:
+    user = await db.scalar(
+        select(User).where(User.email == payload.email)
+    )
 
-    if not user or not verify_password(form_data.password, user.password_hash):
+    if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
     access_token = create_access_token(str(user.id))
-    return TokenResponse(access_token=access_token)
+    refresh_token = create_refresh_token(str(user.id))
+
+    refresh_token_record = RefreshToken(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        token_hash=hash_refresh_token(refresh_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
+        revoked=False,
+    )
+
+    db.add(refresh_token_record)
+    await db.commit()
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+    )
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_tokens(
+    payload: RefreshRequest,
     db: AsyncSession = Depends(get_db),
-):
-    try:
-        payload = decode_token(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-            )
-    except JWTError:
+) -> TokenResponse:
+    user_id = get_token_subject(payload.refresh_token, refresh=True)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail="Invalid refresh token",
         )
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    token_hash = hash_refresh_token(payload.refresh_token)
 
+    refresh_record = await db.scalar(
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash,
+            RefreshToken.revoked.is_(False),
+        )
+    )
+
+    if not refresh_record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not found or revoked",
+        )
+
+    if refresh_record.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expired",
+        )
+
+    user = await db.get(User, uuid.UUID(user_id))
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
 
-    return user
+    refresh_record.revoked = True
+
+    new_access_token = create_access_token(str(user.id))
+    new_refresh_token = create_refresh_token(str(user.id))
+
+    new_refresh_record = RefreshToken(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        token_hash=hash_refresh_token(new_refresh_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
+        revoked=False,
+    )
+
+    db.add(new_refresh_record)
+    await db.commit()
+
+    return TokenResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer",
+    )
 
 
-@router.get("/me")
-async def read_current_user(current_user: User = Depends(get_current_user)):
-    return {
-        "id": str(current_user.id),
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "organization": current_user.organization,
-        "is_active": current_user.is_active,
-    }
+@router.post("/logout", response_model=MessageResponse)
+async def logout(
+    payload: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    token_hash = hash_refresh_token(payload.refresh_token)
+
+    refresh_record = await db.scalar(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+
+    if refresh_record:
+        refresh_record.revoked = True
+        await db.commit()
+
+    return MessageResponse(message="Logged out successfully")
+
+
+@router.get("/me", response_model=UserRead)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    return current_user

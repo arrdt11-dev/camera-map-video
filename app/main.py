@@ -1,23 +1,23 @@
 from fastapi import FastAPI
-from sqlalchemy import text
 
 from app.api.auth import router as auth_router
-from app.db.session import engine
-from app.api.videos import router as videos_router
+from app.core.config import settings
 
-app = FastAPI(title="Camera Map Video Service")
 
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(videos_router, prefix="/api/v1")
+app = FastAPI(
+    title=settings.app_name,
+    debug=settings.debug,
+)
 
 
 @app.get("/")
 async def root():
+    return {"message": "Camera Map Video Service is running"}
+
+
+@app.get("/health")
+async def health():
     return {"status": "ok"}
 
 
-@app.get("/health/db")
-async def db_health():
-    async with engine.begin() as conn:
-        await conn.execute(text("SELECT 1"))
-    return {"database": "ok"}
+app.include_router(auth_router)
