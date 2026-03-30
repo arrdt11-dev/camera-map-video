@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
+from app.models.camera import Camera
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoCreate, VideoResponse
@@ -19,9 +20,18 @@ async def create_video(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if payload.camera_id:
+        camera = await db.get(Camera, payload.camera_id)
+        if not camera:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Camera not found",
+            )
+
     video = Video(
         id=uuid.uuid4(),
         user_id=current_user.id,
+        camera_id=payload.camera_id,
         filename=payload.filename,
         storage_key=f"{current_user.id}/{payload.filename}",
         latitude=payload.latitude,

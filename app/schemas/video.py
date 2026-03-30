@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 class VideoCreate(BaseModel):
     filename: str
+    camera_id: uuid.UUID | None = None
     latitude: float | None = None
     longitude: float | None = None
 
