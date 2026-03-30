@@ -114,5 +114,5 @@ class Camera(Base):
     videos = relationship(
         "Video",
         back_populates="camera",
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

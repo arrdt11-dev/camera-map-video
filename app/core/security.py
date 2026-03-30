@@ -50,19 +50,25 @@ def create_refresh_token(subject: str) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         settings.jwt_secret_key,
         algorithms=[settings.jwt_algorithm],
     )
+    if payload.get("type") != "access":
+        raise JWTError("Invalid token type")
+    return payload
 
 
 def decode_refresh_token(token: str) -> dict:
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         settings.jwt_refresh_secret_key,
         algorithms=[settings.jwt_algorithm],
     )
+    if payload.get("type") != "refresh":
+        raise JWTError("Invalid token type")
+    return payload
 
 
 def get_token_subject(token: str, refresh: bool = False) -> str | None:
@@ -72,6 +78,9 @@ def get_token_subject(token: str, refresh: bool = False) -> str | None:
             if refresh
             else decode_access_token(token)
         )
-        return payload.get("sub")
+        subject = payload.get("sub")
+        if not subject:
+            return None
+        return str(subject)
     except JWTError:
         return None
