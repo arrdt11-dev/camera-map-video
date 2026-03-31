@@ -1,20 +1,19 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
 
 
-class RegisterRequest(BaseModel):
+class UserRegister(BaseModel):
     email: EmailStr
     full_name: str
     password: str
     organization: str | None = None
 
 
-class LoginRequest(BaseModel):
+class UserLogin(BaseModel):
     email: EmailStr
     password: str
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 class TokenResponse(BaseModel):
@@ -23,5 +22,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class MessageResponse(BaseModel):
-    message: str
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    organization: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime

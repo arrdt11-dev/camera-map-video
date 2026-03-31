@@ -2,26 +2,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Camera Map Video Service"
-    debug: bool = True
-
-    database_url: str
-    redis_url: str
-
-    minio_endpoint: str
-    minio_access_key: str
-    minio_secret_key: str
-    minio_bucket_videos: str
-    minio_bucket_previews: str
-    minio_secure: bool = False
-
-    jwt_secret_key: str
-    jwt_refresh_secret_key: str
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    refresh_token_expire_days: int = 7
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    APP_NAME: str
+    DEBUG: bool = False
+
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int
+    DATABASE_URL: str
+
+    REDIS_URL: str
+
+    MINIO_ENDPOINT: str
+    MINIO_ACCESS_KEY: str
+    MINIO_SECRET_KEY: str
+    MINIO_BUCKET_VIDEOS: str
+    MINIO_BUCKET_PREVIEWS: str
+    MINIO_SECURE: bool = False
+    MINIO_PUBLIC_ENDPOINT: str = "http://localhost:9000"
+
+    JWT_SECRET_KEY: str
+    JWT_REFRESH_SECRET_KEY: str
+    JWT_ALGORITHM: str
+
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS: int
 
 
 settings = Settings()

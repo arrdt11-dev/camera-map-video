@@ -1,20 +1,23 @@
 from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
-from app.api.videos import router as videos_router
-from app.core.config import settings
 from app.api.cameras import router as cameras_router
+from app.api.videos import router as videos_router
+from fastapi.middleware.cors import CORSMiddleware
 
-
-app = FastAPI(
-    title=settings.app_name,
-    debug=settings.debug,
+app = FastAPI(title="Camera Map Video Service")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-
-@app.get("/")
-async def root():
-    return {"message": "Camera Map Video Service is running"}
 
 
 @app.get("/health")
@@ -23,5 +26,5 @@ async def health():
 
 
 app.include_router(auth_router)
-app.include_router(videos_router)
 app.include_router(cameras_router)
+app.include_router(videos_router)

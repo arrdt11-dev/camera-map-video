@@ -21,3 +21,11 @@ production-control/
 
 # macOS
 .DS_Store
+
+# frontend
+camera-map-frontend/node_modules/
+camera-map-frontend/dist/
+
+# если вдруг есть node в корне
+node_modules/
+dist/

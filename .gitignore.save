@@ -1,0 +1,12 @@
+
+# IDE
+.idea/
+.vscode/
+
+# alembic
+alembic/versions/*.pyc
+
+# local folders
+production-control/
+
+# ma
