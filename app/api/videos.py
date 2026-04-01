@@ -12,6 +12,7 @@ from app.models.camera import Camera
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoResponse
+from app.services.minio_service import MinioService
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
 
@@ -29,6 +30,19 @@ TMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 def _build_video_response(video: Video, user: User | None = None) -> dict:
     owner = user if user is not None else getattr(video, "user", None)
 
+    minio_service = MinioService()
+
+    video_url = (
+        minio_service.get_public_url(minio_service.bucket_videos, video.storage_key)
+        if video.storage_key
+        else None
+    )
+    preview_url = (
+        minio_service.get_public_url(minio_service.bucket_previews, video.preview_key)
+        if video.preview_key
+        else None
+    )
+
     return {
         "id": video.id,
         "user_id": video.user_id,
@@ -38,8 +52,8 @@ def _build_video_response(video: Video, user: User | None = None) -> dict:
         "filename": video.filename,
         "storage_key": video.storage_key,
         "preview_key": video.preview_key,
-        "video_url": None,
-        "preview_url": None,
+        "video_url": video_url,
+        "preview_url": preview_url,
         "latitude": video.latitude,
         "longitude": video.longitude,
         "status": video.status,
@@ -124,28 +138,48 @@ async def upload_video(
     _validate_video_file(file, file_bytes)
 
     unique_video_name = f"{uuid4()}_{file.filename}"
-    storage_key = f"{user.id}/{unique_video_name}"
+    video_object_name = f"{user.id}/{unique_video_name}"
 
     base_name = file.filename.rsplit(".", 1)[0]
     unique_preview_name = f"{uuid4()}_{base_name}.jpg"
-    preview_key = f"{user.id}/previews/{unique_preview_name}"
+    preview_object_name = f"{user.id}/previews/{unique_preview_name}"
 
     temp_video_path = TMP_UPLOAD_DIR / unique_video_name
     temp_preview_path = TMP_UPLOAD_DIR / unique_preview_name
 
+    minio_service = MinioService()
+
     try:
         temp_video_path.write_bytes(file_bytes)
         _extract_first_frame(temp_video_path, temp_preview_path)
+
+        preview_bytes = temp_preview_path.read_bytes()
+
+        minio_service.upload_bytes(
+            bucket_name=minio_service.bucket_videos,
+            object_name=video_object_name,
+            data=file_bytes,
+            content_type="video/mp4",
+        )
+
+        minio_service.upload_bytes(
+            bucket_name=minio_service.bucket_previews,
+            object_name=preview_object_name,
+            data=preview_bytes,
+            content_type="image/jpeg",
+        )
     finally:
         if temp_video_path.exists():
             temp_video_path.unlink(missing_ok=True)
+        if temp_preview_path.exists():
+            temp_preview_path.unlink(missing_ok=True)
 
     video = Video(
         user_id=user.id,
         camera_id=camera.id,
         filename=file.filename,
-        storage_key=storage_key,
-        preview_key=preview_key,
+        storage_key=video_object_name,
+        preview_key=preview_object_name,
         latitude=getattr(camera, "camera_latitude", None),
         longitude=getattr(camera, "camera_longitude", None),
         status="uploaded",
@@ -154,9 +188,6 @@ async def upload_video(
     db.add(video)
     await db.commit()
     await db.refresh(video)
-
-    if temp_preview_path.exists():
-        temp_preview_path.unlink(missing_ok=True)
 
     return _build_video_response(video, user=user)
 
@@ -218,6 +249,20 @@ async def delete_video(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can delete only your own videos",
+        )
+
+    minio_service = MinioService()
+
+    if video.storage_key:
+        minio_service.delete_object(
+            bucket_name=minio_service.bucket_videos,
+            object_name=video.storage_key,
+        )
+
+    if video.preview_key:
+        minio_service.delete_object(
+            bucket_name=minio_service.bucket_previews,
+            object_name=video.preview_key,
         )
 
     await db.delete(video)
