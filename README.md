@@ -1,7 +1,6 @@
-cat << 'EOF' > README.md
-# Camera Map Video API
+# КАРТА С КАМЕРАМИ И ВИДЕО
 
-Backend-сервис для загрузки и управления видео с привязкой к пользователю и геолокации.
+Backend-сервис для отображения камер на карте, загрузки видео и привязки их к локациям.
 
 ---
 
@@ -10,8 +9,10 @@ Backend-сервис для загрузки и управления видео 
 - FastAPI
 - PostgreSQL
 - SQLAlchemy (async)
-- Alembic (миграции)
-- JWT (авторизация)
+- Alembic
+- Redis
+- MinIO (S3)
+- JWT (access + refresh)
 - Docker / Docker Compose
 
 ---
@@ -22,14 +23,18 @@ Backend-сервис для загрузки и управления видео 
 - Регистрация пользователя
 - Логин
 - JWT (access + refresh токены)
-- Logout
 - Получение текущего пользователя (/auth/me)
 
 ### Видео
-- Загрузка видео (метаданные)
-- Получение списка видео пользователя
-- Получение видео по ID
-- Удаление видео
+- Создание записи о видео
+- Загрузка видео файла
+- Получение списка видео
+- Привязка видео к камере
+
+### Камеры
+- Хранение камер в базе данных
+- Подготовка данных для карты (GeoJSON)
+- Определение наличия видео у камеры (has_video)
 
 ---
 
@@ -40,23 +45,36 @@ git clone <your-repo-url>
 cd camera-map-video
 
 ### 2. Создать .env
-POSTGRES_DB=app
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/app
 
-JWT_SECRET_KEY=supersecret
-JWT_REFRESH_SECRET_KEY=supersecret_refresh
-JWT_ALGORITHM=HS256
+POSTGRES_DB=app  
+POSTGRES_USER=postgres  
+POSTGRES_PASSWORD=postgres  
 
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/app  
+REDIS_URL=redis://redis:6379/0  
+
+MINIO_ENDPOINT=minio:9000  
+MINIO_ACCESS_KEY=minioadmin  
+MINIO_SECRET_KEY=minioadmin  
+MINIO_BUCKET_VIDEOS=videos  
+MINIO_BUCKET_PREVIEWS=previews  
+
+JWT_SECRET_KEY=supersecret  
+JWT_REFRESH_SECRET_KEY=supersecret_refresh  
+JWT_ALGORITHM=HS256  
+
+ACCESS_TOKEN_EXPIRE_MINUTES=30  
+REFRESH_TOKEN_EXPIRE_DAYS=7  
+
+---
 
 ### 3. Запуск
+
 docker compose up -d --build
 
 ### 4. Миграции
-docker compose exec app alembic upgrade head
+
+docker compose exec api alembic upgrade head
 
 ---
 
@@ -66,34 +84,42 @@ http://localhost:8000/docs
 
 ---
 
-## Эндпоинты
+## Основные эндпоинты
 
 ### Auth
 POST /auth/register  
 POST /auth/login  
-POST /auth/refresh  
-POST /auth/logout  
 GET /auth/me  
 
 ### Videos
 POST /videos/  
 GET /videos/  
-GET /videos/{video_id}  
-DELETE /videos/{video_id}  
+POST /videos/upload  
+
+### Cameras
+GET /cameras/  
+GET /cameras/map  
 
 ---
 
-## Примечания
+## Важно
 
-- Используется JWT авторизация
-- Все защищённые эндпоинты требуют Bearer token
-- Видео сохраняются как метаданные
-- Пользователь видит только свои видео
+- Authorization: Bearer <token>
+- Видео привязываются к камерам
+- Камеры отображаются на карте
 
 ---
 
 ## Статус
 
-Проект реализует базовый функционал авторизации и работы с видео.  
-Готов к демонстрации.
-EOF
+Реализовано:
+- авторизация
+- пользователи
+- видео
+- docker окружение
+
+В работе:
+- GeoJSON
+- Redis
+- preview
+- очередь обработки
