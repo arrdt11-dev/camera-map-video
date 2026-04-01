@@ -1,73 +1,107 @@
-import os
 import subprocess
-import tempfile
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import Select, select
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.config import settings
 from app.db.session import get_db
 from app.models.camera import Camera
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoResponse
-from app.services.minio_service import minio_service
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
 
+ALLOWED_VIDEO_CONTENT_TYPES = {
+    "video/mp4",
+    "application/mp4",
+    "application/octet-stream",
+    "video/octet-stream",
+}
 
-def build_video_url(storage_key: str) -> str:
-    return f"{settings.MINIO_PUBLIC_ENDPOINT}/{minio_service.videos_bucket}/{storage_key}"
-
-
-def build_preview_url(preview_key: str | None) -> str | None:
-    if not preview_key:
-        return None
-    return f"{settings.MINIO_PUBLIC_ENDPOINT}/{minio_service.previews_bucket}/{preview_key}"
-
-
-def to_video_response(video: Video) -> VideoResponse:
-    return VideoResponse(
-        id=video.id,
-        user_id=video.user_id,
-        camera_id=video.camera_id,
-        filename=video.filename,
-        storage_key=video.storage_key,
-        preview_key=video.preview_key,
-        video_url=build_video_url(video.storage_key),
-        preview_url=build_preview_url(video.preview_key),
-        latitude=video.latitude,
-        longitude=video.longitude,
-        status=video.status,
-        uploaded_at=video.uploaded_at,
-    )
+TMP_UPLOAD_DIR = Path("/tmp/camera_map_video_uploads")
+TMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def validate_mp4_filename(filename: str) -> None:
-    if not filename.lower().endswith(".mp4"):
-        raise HTTPException(status_code=400, detail="Only mp4 files are allowed")
+def _build_video_response(video: Video, user: User | None = None) -> dict:
+    owner = user if user is not None else getattr(video, "user", None)
+
+    return {
+        "id": video.id,
+        "user_id": video.user_id,
+        "user_full_name": getattr(owner, "full_name", None),
+        "user_email": getattr(owner, "email", None),
+        "camera_id": video.camera_id,
+        "filename": video.filename,
+        "storage_key": video.storage_key,
+        "preview_key": video.preview_key,
+        "video_url": None,
+        "preview_url": None,
+        "latitude": video.latitude,
+        "longitude": video.longitude,
+        "status": video.status,
+        "uploaded_at": video.uploaded_at,
+    }
 
 
-def extract_first_frame(video_path: str, preview_path: str) -> None:
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            video_path,
-            "-frames:v",
-            "1",
-            preview_path,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0 or not os.path.exists(preview_path):
-        raise HTTPException(status_code=400, detail="Could not read video file")
+def _validate_video_file(file: UploadFile, file_bytes: bytes) -> None:
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File name is required",
+        )
+
+    lower_name = file.filename.lower()
+
+    if not lower_name.endswith(".mp4"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .mp4 files are allowed",
+        )
+
+    if file.content_type and file.content_type not in ALLOWED_VIDEO_CONTENT_TYPES:
+        pass
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty",
+        )
+
+    if len(file_bytes) < 16:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is too small to be a valid mp4",
+        )
+
+    if b"ftyp" not in file_bytes[:64]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is not a valid mp4",
+        )
+
+
+def _extract_first_frame(video_path: Path, preview_path: Path) -> None:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-frames:v",
+        "1",
+        str(preview_path),
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    if result.returncode != 0 or not preview_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to extract preview frame from video",
+        )
 
 
 @router.post("/upload", response_model=VideoResponse)
@@ -75,56 +109,45 @@ async def upload_video(
     camera_id: UUID = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    validate_mp4_filename(file.filename or "")
+    result = await db.execute(select(Camera).where(Camera.id == camera_id))
+    camera = result.scalar_one_or_none()
 
-    camera = await db.get(Camera, camera_id)
     if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera not found",
+        )
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty file")
+    file_bytes = await file.read()
+    _validate_video_file(file, file_bytes)
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        video_path = os.path.join(tmp_dir, file.filename)
-        preview_path = os.path.join(tmp_dir, f"{Path(file.filename).stem}.jpg")
+    unique_video_name = f"{uuid4()}_{file.filename}"
+    storage_key = f"{user.id}/{unique_video_name}"
 
-        with open(video_path, "wb") as f:
-            f.write(content)
+    base_name = file.filename.rsplit(".", 1)[0]
+    unique_preview_name = f"{uuid4()}_{base_name}.jpg"
+    preview_key = f"{user.id}/previews/{unique_preview_name}"
 
-        extract_first_frame(video_path, preview_path)
+    temp_video_path = TMP_UPLOAD_DIR / unique_video_name
+    temp_preview_path = TMP_UPLOAD_DIR / unique_preview_name
 
-        with open(preview_path, "rb") as f:
-            preview_bytes = f.read()
-
-    minio_service.ensure_buckets()
-
-    storage_key = f"{current_user.id}/{file.filename}"
-    preview_key = f"{current_user.id}/previews/{Path(file.filename).stem}.jpg"
-
-    minio_service.upload_bytes(
-        bucket_name=minio_service.videos_bucket,
-        object_name=storage_key,
-        data=content,
-        content_type="video/mp4",
-    )
-    minio_service.upload_bytes(
-        bucket_name=minio_service.previews_bucket,
-        object_name=preview_key,
-        data=preview_bytes,
-        content_type="image/jpeg",
-    )
+    try:
+        temp_video_path.write_bytes(file_bytes)
+        _extract_first_frame(temp_video_path, temp_preview_path)
+    finally:
+        if temp_video_path.exists():
+            temp_video_path.unlink(missing_ok=True)
 
     video = Video(
-        user_id=current_user.id,
+        user_id=user.id,
         camera_id=camera.id,
         filename=file.filename,
         storage_key=storage_key,
         preview_key=preview_key,
-        latitude=camera.camera_latitude,
-        longitude=camera.camera_longitude,
+        latitude=getattr(camera, "camera_latitude", None),
+        longitude=getattr(camera, "camera_longitude", None),
         status="uploaded",
     )
 
@@ -132,7 +155,10 @@ async def upload_video(
     await db.commit()
     await db.refresh(video)
 
-    return to_video_response(video)
+    if temp_preview_path.exists():
+        temp_preview_path.unlink(missing_ok=True)
+
+    return _build_video_response(video, user=user)
 
 
 @router.get("/", response_model=list[VideoResponse])
@@ -140,9 +166,14 @@ async def list_videos(
     camera_id: UUID | None = None,
     title: str | None = None,
     user_id: UUID | None = None,
+    user_query: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    query: Select[tuple[Video]] = select(Video)
+    query = (
+        select(Video, User)
+        .join(User, Video.user_id == User.id)
+        .order_by(Video.uploaded_at.desc())
+    )
 
     if camera_id:
         query = query.where(Video.camera_id == camera_id)
@@ -153,51 +184,70 @@ async def list_videos(
     if user_id:
         query = query.where(Video.user_id == user_id)
 
-    query = query.order_by(Video.uploaded_at.desc())
+    if user_query:
+        pattern = f"%{user_query}%"
+        query = query.where(
+            or_(
+                User.full_name.ilike(pattern),
+                User.email.ilike(pattern),
+            )
+        )
 
     result = await db.execute(query)
-    videos = result.scalars().all()
+    rows = result.all()
 
-    return [to_video_response(video) for video in videos]
+    return [_build_video_response(video, user=user) for video, user in rows]
 
 
 @router.delete("/{video_id}")
 async def delete_video(
     video_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    video = await db.get(Video, video_id)
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalar_one_or_none()
+
     if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    if video.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can delete only your own videos",
+        )
 
     await db.delete(video)
     await db.commit()
 
-    return {"ok": True}
+    return {"message": "Video deleted successfully"}
 
 
 @router.get("/my/dashboard")
 async def my_dashboard(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Video)
-        .where(Video.user_id == current_user.id)
+        .where(Video.user_id == user.id)
         .order_by(Video.uploaded_at.desc())
-        .limit(10)
     )
-
     videos = result.scalars().all()
 
     return {
         "user": {
-            "id": str(current_user.id),
-            "email": current_user.email,
-            "full_name": current_user.full_name,
-            "organization": current_user.organization,
-            "is_active": current_user.is_active,
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "organization": user.organization,
+            "is_active": user.is_active,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
         },
-        "last_uploaded_videos": [to_video_response(video) for video in videos],
+        "videos": [_build_video_response(video, user=user) for video in videos],
+        "videos_count": len(videos),
     }
