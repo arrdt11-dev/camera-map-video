@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.redis import get_redis
 from app.db.session import get_db
 from app.models.camera import Camera
+from app.models.user import User
 from app.models.video import Video
 from app.schemas.camera import CameraCreate, CameraResponse
 from app.services.camera_cache import (
@@ -15,6 +16,7 @@ from app.services.camera_cache import (
     invalidate_geojson_cache,
     set_cached_geojson,
 )
+from app.services.minio_service import MinioService
 
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
@@ -30,7 +32,6 @@ async def create_camera(
     await db.commit()
     await db.refresh(camera)
 
-    # ❗ Сбрасываем кеш
     await invalidate_geojson_cache(redis)
 
     return {
@@ -283,4 +284,86 @@ async def get_camera(
         "updated_at": camera.updated_at,
         "videos_count": videos_count,
         "has_video": videos_count > 0,
+    }
+
+
+@router.get("/{camera_id}/details")
+async def get_camera_details(
+    camera_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Camera, func.count(Video.id).label("videos_count"))
+        .outerjoin(Video, Video.camera_id == Camera.id)
+        .where(Camera.id == camera_id)
+        .group_by(Camera.id)
+    )
+
+    result = await db.execute(stmt)
+    row = result.first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    camera, videos_count = row
+
+    videos_stmt = (
+        select(Video, User)
+        .join(User, Video.user_id == User.id)
+        .where(Video.camera_id == camera_id)
+        .order_by(Video.uploaded_at.desc())
+    )
+
+    videos_result = await db.execute(videos_stmt)
+    videos_rows = videos_result.all()
+
+    minio_service = MinioService()
+
+    videos = []
+    for video, user in videos_rows:
+        video_url = (
+            minio_service.get_public_url(minio_service.bucket_videos, video.storage_key)
+            if video.storage_key
+            else None
+        )
+        preview_url = (
+            minio_service.get_public_url(minio_service.bucket_previews, video.preview_key)
+            if video.preview_key
+            else None
+        )
+
+        videos.append(
+            {
+                "id": video.id,
+                "user_id": video.user_id,
+                "user_full_name": user.full_name,
+                "user_email": user.email,
+                "camera_id": video.camera_id,
+                "filename": video.filename,
+                "storage_key": video.storage_key,
+                "preview_key": video.preview_key,
+                "video_url": video_url,
+                "preview_url": preview_url,
+                "latitude": video.latitude,
+                "longitude": video.longitude,
+                "status": video.status,
+                "uploaded_at": video.uploaded_at,
+            }
+        )
+
+    return {
+        "camera": {
+            "id": camera.id,
+            "camera_id": camera.camera_id,
+            "camera_name": camera.camera_name,
+            "camera_place": camera.camera_place,
+            "model": camera.model,
+            "camera_type": camera.camera_type,
+            "camera_latitude": camera.camera_latitude,
+            "camera_longitude": camera.camera_longitude,
+            "videos_count": videos_count,
+            "has_video": videos_count > 0,
+        },
+        "videos": videos,
+        "videos_count": videos_count,
     }

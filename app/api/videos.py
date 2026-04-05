@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -15,6 +16,8 @@ from app.schemas.video import VideoResponse
 from app.services.minio_service import MinioService
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
+
+upload_lock = asyncio.Lock()
 
 ALLOWED_VIDEO_CONTENT_TYPES = {
     "video/mp4",
@@ -125,71 +128,72 @@ async def upload_video(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Camera).where(Camera.id == camera_id))
-    camera = result.scalar_one_or_none()
+    async with upload_lock:
+        result = await db.execute(select(Camera).where(Camera.id == camera_id))
+        camera = result.scalar_one_or_none()
 
-    if not camera:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Camera not found",
+        if not camera:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Camera not found",
+            )
+
+        file_bytes = await file.read()
+        _validate_video_file(file, file_bytes)
+
+        unique_video_name = f"{uuid4()}_{file.filename}"
+        video_object_name = f"{user.id}/{unique_video_name}"
+
+        base_name = file.filename.rsplit(".", 1)[0]
+        unique_preview_name = f"{uuid4()}_{base_name}.jpg"
+        preview_object_name = f"{user.id}/previews/{unique_preview_name}"
+
+        temp_video_path = TMP_UPLOAD_DIR / unique_video_name
+        temp_preview_path = TMP_UPLOAD_DIR / unique_preview_name
+
+        minio_service = MinioService()
+
+        try:
+            temp_video_path.write_bytes(file_bytes)
+            _extract_first_frame(temp_video_path, temp_preview_path)
+
+            preview_bytes = temp_preview_path.read_bytes()
+
+            minio_service.upload_bytes(
+                bucket_name=minio_service.bucket_videos,
+                object_name=video_object_name,
+                data=file_bytes,
+                content_type="video/mp4",
+            )
+
+            minio_service.upload_bytes(
+                bucket_name=minio_service.bucket_previews,
+                object_name=preview_object_name,
+                data=preview_bytes,
+                content_type="image/jpeg",
+            )
+        finally:
+            if temp_video_path.exists():
+                temp_video_path.unlink(missing_ok=True)
+            if temp_preview_path.exists():
+                temp_preview_path.unlink(missing_ok=True)
+
+        video = Video(
+            user_id=user.id,
+            camera_id=camera.id,
+            filename=file.filename,
+            storage_key=video_object_name,
+            preview_key=preview_object_name,
+            latitude=getattr(camera, "camera_latitude", None),
+            longitude=getattr(camera, "camera_longitude", None),
+            status="uploaded",
         )
 
-    file_bytes = await file.read()
-    _validate_video_file(file, file_bytes)
+        db.add(video)
+        await db.commit()
+        await db.refresh(video)
 
-    unique_video_name = f"{uuid4()}_{file.filename}"
-    video_object_name = f"{user.id}/{unique_video_name}"
-
-    base_name = file.filename.rsplit(".", 1)[0]
-    unique_preview_name = f"{uuid4()}_{base_name}.jpg"
-    preview_object_name = f"{user.id}/previews/{unique_preview_name}"
-
-    temp_video_path = TMP_UPLOAD_DIR / unique_video_name
-    temp_preview_path = TMP_UPLOAD_DIR / unique_preview_name
-
-    minio_service = MinioService()
-
-    try:
-        temp_video_path.write_bytes(file_bytes)
-        _extract_first_frame(temp_video_path, temp_preview_path)
-
-        preview_bytes = temp_preview_path.read_bytes()
-
-        minio_service.upload_bytes(
-            bucket_name=minio_service.bucket_videos,
-            object_name=video_object_name,
-            data=file_bytes,
-            content_type="video/mp4",
-        )
-
-        minio_service.upload_bytes(
-            bucket_name=minio_service.bucket_previews,
-            object_name=preview_object_name,
-            data=preview_bytes,
-            content_type="image/jpeg",
-        )
-    finally:
-        if temp_video_path.exists():
-            temp_video_path.unlink(missing_ok=True)
-        if temp_preview_path.exists():
-            temp_preview_path.unlink(missing_ok=True)
-
-    video = Video(
-        user_id=user.id,
-        camera_id=camera.id,
-        filename=file.filename,
-        storage_key=video_object_name,
-        preview_key=preview_object_name,
-        latitude=getattr(camera, "camera_latitude", None),
-        longitude=getattr(camera, "camera_longitude", None),
-        status="uploaded",
-    )
-
-    db.add(video)
-    await db.commit()
-    await db.refresh(video)
-
-    return _build_video_response(video, user=user)
+        return _build_video_response(video, user=user)
 
 
 @router.get("/", response_model=list[VideoResponse])
