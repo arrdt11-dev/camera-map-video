@@ -19,8 +19,9 @@ export default function App() {
     }
   }, []);
 
-  function handleLogin(accessToken) {
+  function handleLogin(accessToken, refreshToken) {
     localStorage.setItem("access_token", accessToken);
+    localStorage.setItem("refresh_token", refreshToken);
     setToken(accessToken);
     setPage("map");
   }
@@ -32,6 +33,15 @@ export default function App() {
     setPage("login");
   }
 
+  if (page === "login") {
+    return (
+      <LoginPage
+        onLogin={handleLogin}
+        onGoToRegister={() => setPage("register")}
+      />
+    );
+  }
+
   if (page === "register") {
     return <RegisterPage onGoToLogin={() => setPage("login")} />;
   }
@@ -40,7 +50,7 @@ export default function App() {
     return (
       <ProfilePage
         token={token}
-        onGoToMap={() => setPage("map")}
+        onBack={() => setPage("map")}
         onLogout={handleLogout}
       />
     );
@@ -49,16 +59,11 @@ export default function App() {
   if (page === "map") {
     return (
       <MapPage
+        onOpenProfile={() => setPage("profile")}
         onLogout={handleLogout}
-        onGoToProfile={() => setPage("profile")}
       />
     );
   }
 
-  return (
-    <LoginPage
-      onLogin={handleLogin}
-      onGoToRegister={() => setPage("register")}
-    />
-  );
+  return <div>Приложение работает</div>;
 }

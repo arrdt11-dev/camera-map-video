@@ -1,104 +1,72 @@
 import { useEffect, useState } from "react";
-import { getMe } from "../services/api";
+import { getMe, getVideos } from "../api";
 
-export default function ProfilePage({ token, onGoToMap, onLogout }) {
+export default function ProfilePage({ token, onBack, onLogout }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadUser() {
+    async function loadProfile() {
       try {
         setLoading(true);
         setError("");
 
-        const userData = await getMe(token);
-        setUser(userData);
+        const me = await getMe(token);
+        setUser(me);
+
+        const allVideos = await getVideos(token);
+        setVideos(allVideos.slice(0, 5));
       } catch (err) {
-        setError(err.message || "Ошибка загрузки профиля");
+        setError(err.message || "Не удалось получить пользователя");
       } finally {
         setLoading(false);
       }
     }
 
     if (token) {
-      loadUser();
+      loadProfile();
     } else {
+      setError("Токен отсутствует");
       setLoading(false);
-      setError("Токен не найден");
     }
   }, [token]);
 
   return (
-    <div style={styles.wrapper}>
-      <div style={styles.header}>
-        <h2>Личный кабинет</h2>
-
-        <div style={styles.buttons}>
-          <button onClick={onGoToMap} style={styles.secondaryButton}>
-            На главную
-          </button>
-          <button onClick={onLogout} style={styles.button}>
-            Выйти
-          </button>
-        </div>
+    <div style={{ maxWidth: "800px", margin: "40px auto" }}>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+        <button onClick={onBack}>На главную</button>
+        <button onClick={onLogout}>Выйти</button>
       </div>
 
-      {loading && <p>Загрузка...</p>}
-      {error && <p style={styles.error}>{error}</p>}
+      <h1>Личный кабинет</h1>
 
-      {!loading && !error && user && (
-        <div style={styles.card}>
-          <h3>Информация о пользователе</h3>
-          <p><b>Email:</b> {user.email}</p>
-          <p><b>ФИО:</b> {user.full_name}</p>
-          <p><b>Организация:</b> {user.organization || "-"}</p>
-          <p><b>ID:</b> {user.id}</p>
-          <p><b>Активен:</b> {user.is_active ? "Да" : "Нет"}</p>
+      {loading && <p>Загрузка...</p>}
+
+      {error && <p style={{ color: "red" }}>{error}</p>}
+
+      {user && (
+        <div style={{ marginBottom: "24px" }}>
+          <p><strong>ФИО:</strong> {user.full_name}</p>
+          <p><strong>Email:</strong> {user.email}</p>
+          <p><strong>Организация:</strong> {user.organization || "—"}</p>
         </div>
+      )}
+
+      <h2>Последние загруженные видео</h2>
+
+      {videos.length === 0 ? (
+        <p>Видео пока нет</p>
+      ) : (
+        <ul>
+          {videos.map((video) => (
+            <li key={video.id}>
+              {video.filename}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
 }
-
-const styles = {
-  wrapper: {
-    padding: "24px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-  },
-  buttons: {
-    display: "flex",
-    gap: "10px",
-  },
-  card: {
-    border: "1px solid #ddd",
-    borderRadius: "12px",
-    padding: "16px",
-    background: "#fafafa",
-    marginBottom: "20px",
-  },
-  button: {
-    padding: "10px 16px",
-    borderRadius: "8px",
-    border: "none",
-    background: "#222",
-    color: "#fff",
-    cursor: "pointer",
-  },
-  secondaryButton: {
-    padding: "10px 16px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
-    background: "#fff",
-    color: "#222",
-    cursor: "pointer",
-  },
-  error: {
-    color: "red",
-  },
-};

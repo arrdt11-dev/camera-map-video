@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { loginUser } from "../services/api";
+import { loginUser } from "../api";
 
 export default function LoginPage({ onLogin, onGoToRegister }) {
   const [form, setForm] = useState({
@@ -10,7 +10,10 @@ export default function LoginPage({ onLogin, onGoToRegister }) {
   const [loading, setLoading] = useState(false);
 
   function handleChange(e) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   }
 
   async function handleSubmit(e) {
@@ -20,99 +23,63 @@ export default function LoginPage({ onLogin, onGoToRegister }) {
 
     try {
       const data = await loginUser(form);
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
-      onLogin(data.access_token);
+      onLogin(data.access_token, data.refresh_token);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Ошибка входа");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={styles.wrapper}>
-      <form style={styles.form} onSubmit={handleSubmit}>
-        <h2>Вход</h2>
+    <div style={{ maxWidth: "400px", margin: "40px auto" }}>
+      <h1>Вход</h1>
 
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          value={form.email}
-          onChange={handleChange}
-          style={styles.input}
-          required
-        />
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: "12px" }}>
+          <input
+            type="email"
+            name="email"
+            placeholder="Почта"
+            value={form.email}
+            onChange={handleChange}
+            required
+            style={{ width: "100%", padding: "10px" }}
+          />
+        </div>
 
-        <input
-          name="password"
-          type="password"
-          placeholder="Пароль"
-          value={form.password}
-          onChange={handleChange}
-          style={styles.input}
-          required
-        />
+        <div style={{ marginBottom: "12px" }}>
+          <input
+            type="password"
+            name="password"
+            placeholder="Пароль"
+            value={form.password}
+            onChange={handleChange}
+            required
+            style={{ width: "100%", padding: "10px" }}
+          />
+        </div>
 
-        {error && <p style={styles.error}>{error}</p>}
-
-        <button type="submit" style={styles.button} disabled={loading}>
-          {loading ? "Входим..." : "Войти"}
-        </button>
+        {error && (
+          <p style={{ color: "red" }}>{error}</p>
+        )}
 
         <button
-          type="button"
-          style={styles.linkButton}
-          onClick={onGoToRegister}
+          type="submit"
+          disabled={loading}
+          style={{ width: "100%", padding: "10px", marginBottom: "10px" }}
         >
-          Регистрация
+          {loading ? "Входим..." : "Войти"}
         </button>
       </form>
+
+      <button
+        type="button"
+        onClick={onGoToRegister}
+        style={{ width: "100%", padding: "10px" }}
+      >
+        Регистрация
+      </button>
     </div>
   );
 }
-
-const styles = {
-  wrapper: {
-    minHeight: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#f5f5f5",
-  },
-  form: {
-    width: "360px",
-    background: "#fff",
-    padding: "24px",
-    borderRadius: "12px",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  input: {
-    padding: "12px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
-  },
-  button: {
-    padding: "12px",
-    borderRadius: "8px",
-    border: "none",
-    background: "#222",
-    color: "#fff",
-    cursor: "pointer",
-  },
-  linkButton: {
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
-    background: "#fff",
-    cursor: "pointer",
-  },
-  error: {
-    color: "red",
-    margin: 0,
-  },
-};
