@@ -28,4 +28,4 @@ camera-map-frontend/dist/
 
 # если вдруг есть node в корне
 node_modules/
-dist/
+dist/api.log
