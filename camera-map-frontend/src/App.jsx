@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import MapPage from "./pages/MapPage";
@@ -7,17 +7,6 @@ import ProfilePage from "./pages/ProfilePage";
 export default function App() {
   const [page, setPage] = useState("login");
   const [token, setToken] = useState("");
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem("access_token");
-
-    if (savedToken) {
-      setToken(savedToken);
-      setPage("map");
-    } else {
-      setPage("login");
-    }
-  }, []);
 
   function handleLogin(accessToken, refreshToken) {
     localStorage.setItem("access_token", accessToken);

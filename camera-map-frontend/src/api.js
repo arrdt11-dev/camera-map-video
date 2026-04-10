@@ -50,17 +50,75 @@ export async function getMe(token) {
   return response.json();
 }
 
-export async function getVideos(token, params = {}) {
-  const query = new URLSearchParams();
+export async function getCamerasGeoJson() {
+  const response = await fetch(`${API_BASE_URL}/cameras/geojson`, {
+    method: "GET",
+  });
 
-  if (params.title) query.append("title", params.title);
-  if (params.user_id) query.append("user_id", params.user_id);
-  if (params.camera_id) query.append("camera_id", params.camera_id);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || "Не удалось получить GeoJSON камер");
+  }
 
-  const url = `${API_BASE_URL}/videos/${query.toString() ? `?${query.toString()}` : ""}`;
+  return response.json();
+}
+
+export async function getVideos(params = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (params.title) {
+    searchParams.append("title", params.title);
+  }
+
+  if (params.user) {
+    searchParams.append("user", params.user);
+  }
+
+  if (params.camera_id) {
+    searchParams.append("camera_id", params.camera_id);
+  }
+
+  const queryString = searchParams.toString();
+  const url = `${API_BASE_URL}/videos/${queryString ? `?${queryString}` : ""}`;
 
   const response = await fetch(url, {
     method: "GET",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || "Не удалось получить список видео");
+  }
+
+  return response.json();
+}
+
+export async function uploadVideo({ token, cameraId, file }) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/videos/upload?camera_id=${encodeURIComponent(cameraId)}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || "Не удалось загрузить видео");
+  }
+
+  return response.json();
+}
+
+export async function deleteVideo({ token, videoId }) {
+  const response = await fetch(`${API_BASE_URL}/videos/${videoId}`, {
+    method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -68,7 +126,7 @@ export async function getVideos(token, params = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Не удалось получить видео");
+    throw new Error(error.detail || "Не удалось удалить видео");
   }
 
   return response.json();
