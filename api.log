@@ -1,0 +1,48 @@
+camera_map_api  | INFO:     Will watch for changes in these directories: ['/app']
+camera_map_api  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+camera_map_api  | INFO:     Started reloader process [1] using StatReload
+camera_map_api  | Process SpawnProcess-1:
+camera_map_api  | Traceback (most recent call last):
+camera_map_api  |   File "/usr/local/lib/python3.11/multiprocessing/process.py", line 314, in _bootstrap
+camera_map_api  |     self.run()
+camera_map_api  |   File "/usr/local/lib/python3.11/multiprocessing/process.py", line 108, in run
+camera_map_api  |     self._target(*self._args, **self._kwargs)
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/_subprocess.py", line 80, in subprocess_started
+camera_map_api  |     target(sockets=sockets)
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 75, in run
+camera_map_api  |     return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+camera_map_api  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+camera_map_api  |     return runner.run(main)
+camera_map_api  |            ^^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+camera_map_api  |     return self._loop.run_until_complete(task)
+camera_map_api  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+camera_map_api  |     return future.result()
+camera_map_api  |            ^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 79, in serve
+camera_map_api  |     await self._serve(sockets)
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 86, in _serve
+camera_map_api  |     config.load()
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 441, in load
+camera_map_api  |     self.loaded_app = import_from_string(self.app)
+camera_map_api  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+camera_map_api  |     module = importlib.import_module(module_str)
+camera_map_api  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+camera_map_api  |   File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+camera_map_api  |     return _bootstrap._gcd_import(name[level:], package, level)
+camera_map_api  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+camera_map_api  |   File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+camera_map_api  |   File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+camera_map_api  |   File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+camera_map_api  |   File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+camera_map_api  |   File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+camera_map_api  |   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+camera_map_api  |   File "/app/app/main.py", line 5, in <module>
+camera_map_api  |     from app.api.cameras import router as cameras_router
+camera_map_api  |   File "/app/app/api/cameras.py", line 19
+camera_map_api  |     from app.services.minio_service import Minfrom fastapi import APIRouter, Depends, Query, HTTPException
+camera_map_api  |                                                    ^^^^^^^
+camera_map_api  | SyntaxError: invalid syntax

@@ -1,16 +1,24 @@
-import uuid
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
 
-
-class UserRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
+class UserCreate(BaseModel):
     email: EmailStr
     full_name: str
-    organization: str | None = None
+    password: str
+    organization: Optional[str] = None
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    organization: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
