@@ -1,5 +1,20 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function getAuthHeaders(token) {
+  const accessToken = token || localStorage.getItem("access_token");
+
+  if (!accessToken) {
+    return {
+      "Content-Type": "application/json",
+    };
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+}
+
 export async function registerUser(payload) {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
     method: "POST",
@@ -37,9 +52,7 @@ export async function loginUser(payload) {
 export async function getMe(token) {
   const response = await fetch(`${API_BASE_URL}/auth/me`, {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: getAuthHeaders(token),
   });
 
   if (!response.ok) {
@@ -53,80 +66,28 @@ export async function getMe(token) {
 export async function getCamerasGeoJson() {
   const response = await fetch(`${API_BASE_URL}/cameras/geojson`, {
     method: "GET",
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Не удалось получить GeoJSON камер");
-  }
-
-  return response.json();
-}
-
-export async function getVideos(params = {}) {
-  const searchParams = new URLSearchParams();
-
-  if (params.title) {
-    searchParams.append("title", params.title);
-  }
-
-  if (params.user) {
-    searchParams.append("user", params.user);
-  }
-
-  if (params.camera_id) {
-    searchParams.append("camera_id", params.camera_id);
-  }
-
-  const queryString = searchParams.toString();
-  const url = `${API_BASE_URL}/videos/${queryString ? `?${queryString}` : ""}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Не удалось получить список видео");
-  }
-
-  return response.json();
-}
-
-export async function uploadVideo({ token, cameraId, file }) {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(
-    `${API_BASE_URL}/videos/upload?camera_id=${encodeURIComponent(cameraId)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Не удалось загрузить видео");
-  }
-
-  return response.json();
-}
-
-export async function deleteVideo({ token, videoId }) {
-  const response = await fetch(`${API_BASE_URL}/videos/${videoId}`, {
-    method: "DELETE",
     headers: {
-      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Не удалось удалить видео");
+    throw new Error(error.detail || "Не удалось загрузить камеры");
+  }
+
+  return response.json();
+}
+
+export async function getVideos(token) {
+  const response = await fetch(`${API_BASE_URL}/videos`, {
+    method: "GET",
+    headers: getAuthHeaders(token),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || "Не удалось загрузить видео");
   }
 
   return response.json();

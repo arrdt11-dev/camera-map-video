@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 
 from minio import Minio
@@ -17,7 +18,9 @@ class MinioService:
         self.bucket_videos = settings.MINIO_BUCKET_VIDEOS
         self.bucket_previews = settings.MINIO_BUCKET_PREVIEWS
 
-        endpoint_without_scheme = self.endpoint.replace("http://", "").replace("https://", "")
+        endpoint_without_scheme = (
+            self.endpoint.replace("http://", "").replace("https://", "")
+        )
 
         self.client = Minio(
             endpoint_without_scheme,
@@ -32,6 +35,26 @@ class MinioService:
     def _ensure_bucket_exists(self, bucket_name: str) -> None:
         if not self.client.bucket_exists(bucket_name):
             self.client.make_bucket(bucket_name)
+
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+                    "Resource": [f"arn:aws:s3:::{bucket_name}"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [f"arn:aws:s3:::{bucket_name}/*"],
+                },
+            ],
+        }
+
+        self.client.set_bucket_policy(bucket_name, json.dumps(policy))
 
     def upload_bytes(
         self,

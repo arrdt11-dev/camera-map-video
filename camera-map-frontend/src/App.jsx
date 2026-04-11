@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import MapPage from "./pages/MapPage";
@@ -8,9 +8,19 @@ export default function App() {
   const [page, setPage] = useState("login");
   const [token, setToken] = useState("");
 
-  function handleLogin(accessToken, refreshToken) {
+  useEffect(() => {
+    const savedToken = localStorage.getItem("access_token");
+
+    if (savedToken) {
+      setToken(savedToken);
+      setPage("map");
+    } else {
+      setPage("login");
+    }
+  }, []);
+
+  function handleLogin(accessToken) {
     localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshToken);
     setToken(accessToken);
     setPage("map");
   }
@@ -22,37 +32,50 @@ export default function App() {
     setPage("login");
   }
 
-  if (page === "login") {
-    return (
-      <LoginPage
-        onLogin={handleLogin}
-        onGoToRegister={() => setPage("register")}
-      />
-    );
+  function openRegister() {
+    setPage("register");
+  }
+
+  function openLogin() {
+    setPage("login");
+  }
+
+  function openProfile() {
+    setPage("profile");
+  }
+
+  function openMap() {
+    setPage("map");
   }
 
   if (page === "register") {
-    return <RegisterPage onGoToLogin={() => setPage("login")} />;
+    return <RegisterPage onOpenLogin={openLogin} />;
   }
 
   if (page === "profile") {
     return (
       <ProfilePage
         token={token}
-        onBack={() => setPage("map")}
+        onBack={openMap}
         onLogout={handleLogout}
       />
     );
   }
 
-  if (page === "map") {
+  if (page === "map" && token) {
     return (
       <MapPage
-        onOpenProfile={() => setPage("profile")}
+        token={token}
         onLogout={handleLogout}
+        onOpenProfile={openProfile}
       />
     );
   }
 
-  return <div>Приложение работает</div>;
+  return (
+    <LoginPage
+      onLogin={handleLogin}
+      onOpenRegister={openRegister}
+    />
+  );
 }
