@@ -1,305 +1,225 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getMe, getVideos, deleteVideo } from "../api";
 
-export default function ProfilePage({ token, onBack, onLogout }) {
+export default function ProfilePage({ token, onLogout, onBack }) {
   const [user, setUser] = useState(null);
   const [videos, setVideos] = useState([]);
-  const [titleFilter, setTitleFilter] = useState("");
-  const [userFilter, setUserFilter] = useState("");
-  const [loadingUser, setLoadingUser] = useState(true);
-  const [loadingVideos, setLoadingVideos] = useState(true);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  async function loadProfileData() {
-    const actualToken = token || localStorage.getItem("access_token");
-
-    if (!actualToken) {
-      setError("Нет токена авторизации");
-      setLoadingUser(false);
-      setLoadingVideos(false);
-      return;
-    }
-
-    try {
-      setError("");
-      setLoadingUser(true);
-      setLoadingVideos(true);
-
-      const [userData, videosData] = await Promise.all([
-        getMe(actualToken),
-        getVideos(actualToken),
-      ]);
-
-      setUser(userData);
-      setVideos(Array.isArray(videosData) ? videosData : []);
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось загрузить данные профиля");
-    } finally {
-      setLoadingUser(false);
-      setLoadingVideos(false);
-    }
-  }
+  const [searchFilename, setSearchFilename] = useState("");
+  const [searchUser, setSearchUser] = useState("");
 
   useEffect(() => {
-    loadProfileData();
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const userData = await getMe(token);
+        setUser(userData);
+
+        const videosData = await getVideos(token);
+        setVideos(Array.isArray(videosData) ? videosData : []);
+      } catch (e) {
+        if (e.message === "INVALID_TOKEN") {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
+          window.location.reload();
+          return;
+        }
+
+        setError(e.message || "Ошибка загрузки профиля");
+        setUser(null);
+        setVideos([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (token) {
+      loadData();
+    } else {
+      setLoading(false);
+      setError("Токен отсутствует");
+    }
   }, [token]);
 
-  async function handleApplyFilters() {
-    const actualToken = token || localStorage.getItem("access_token");
+  const filteredVideos = useMemo(() => {
+    return videos.filter((video) => {
+      const filename = String(video?.filename || "").toLowerCase();
+      const userFullName = String(video?.user_full_name || "").toLowerCase();
 
-    if (!actualToken) {
-      setError("Нет токена авторизации");
-      return;
-    }
-
-    try {
-      setError("");
-      setLoadingVideos(true);
-
-      const data = await getVideos(actualToken, {
-        title: titleFilter.trim() || undefined,
-        user: userFilter.trim() || undefined,
-      });
-
-      setVideos(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось применить фильтры");
-    } finally {
-      setLoadingVideos(false);
-    }
-  }
-
-  async function handleResetFilters() {
-    setTitleFilter("");
-    setUserFilter("");
-
-    const actualToken = token || localStorage.getItem("access_token");
-
-    if (!actualToken) {
-      setError("Нет токена авторизации");
-      return;
-    }
-
-    try {
-      setError("");
-      setLoadingVideos(true);
-
-      const data = await getVideos(actualToken);
-      setVideos(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось сбросить фильтры");
-    } finally {
-      setLoadingVideos(false);
-    }
-  }
+      return (
+        filename.includes(searchFilename.toLowerCase()) &&
+        userFullName.includes(searchUser.toLowerCase())
+      );
+    });
+  }, [videos, searchFilename, searchUser]);
 
   async function handleDelete(videoId) {
-    const actualToken = token || localStorage.getItem("access_token");
-
-    if (!actualToken) {
-      setError("Нет токена авторизации");
-      return;
-    }
-
     const confirmed = window.confirm("Удалить это видео?");
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      setError("");
-      await deleteVideo(actualToken, videoId);
-      await handleApplyFilters();
+      await deleteVideo(videoId, token);
+      setVideos((prev) => prev.filter((video) => video.id !== videoId));
     } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось удалить видео");
+      if (e.message === "INVALID_TOKEN") {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.reload();
+        return;
+      }
+
+      alert(e.message || "Ошибка удаления видео");
     }
+  }
+
+  function handleOpenVideo(video) {
+    const url =
+      video?.video_url ||
+      video?.file_url ||
+      video?.url ||
+      (video?.storage_key
+        ? `http://localhost:9000/videos/${video.storage_key}`
+        : "");
+
+    if (!url) {
+      alert("Видео недоступно");
+      return;
+    }
+
+    window.open(url, "_blank");
+  }
+
+  function getPreviewUrl(video) {
+    return (
+      video?.preview_url ||
+      video?.thumbnail_url ||
+      (video?.preview_key
+        ? `http://localhost:9000/previews/${video.preview_key}`
+        : "")
+    );
   }
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1100px", margin: "0 auto" }}>
+    <div style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
       <h1>Личный кабинет</h1>
 
-      <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+      <div style={{ marginBottom: "20px" }}>
         <button onClick={onBack}>На главную</button>
-        <button onClick={onLogout}>Выйти</button>
+        <button onClick={onLogout} style={{ marginLeft: "10px" }}>
+          Выйти
+        </button>
       </div>
 
-      {error ? <p style={{ color: "red" }}>{error}</p> : null}
+      {error ? (
+        <div style={{ color: "red", marginBottom: "20px" }}>{error}</div>
+      ) : null}
 
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <h2>Пользователь</h2>
+      <div style={{ marginBottom: "24px" }}>
+        <h2>Профиль</h2>
+        <p>
+          <strong>Имя:</strong> {user?.full_name || "-"}
+        </p>
+        <p>
+          <strong>Email:</strong> {user?.email || "-"}
+        </p>
+        <p>
+          <strong>Организация:</strong> {user?.organization || "-"}
+        </p>
+        <p>
+          <strong>Статус:</strong> {user?.is_active ? "Активен" : "Неактивен"}
+        </p>
+      </div>
 
-        {loadingUser ? (
-          <p>Загрузка пользователя...</p>
-        ) : user ? (
-          <div>
-            <p>
-              <strong>ФИО:</strong> {user.full_name}
-            </p>
-            <p>
-              <strong>Email:</strong> {user.email}
-            </p>
-            <p>
-              <strong>Организация:</strong> {user.organization || "—"}
-            </p>
-            <p>
-              <strong>Статус:</strong> {user.is_active ? "Активен" : "Неактивен"}
-            </p>
-          </div>
+      <div style={{ marginBottom: "24px" }}>
+        <h2>Поиск по видео</h2>
+
+        <input
+          type="text"
+          placeholder="Поиск по filename"
+          value={searchFilename}
+          onChange={(e) => setSearchFilename(e.target.value)}
+          style={{ marginRight: "10px", padding: "8px", width: "220px" }}
+        />
+
+        <input
+          type="text"
+          placeholder="Поиск по user_full_name"
+          value={searchUser}
+          onChange={(e) => setSearchUser(e.target.value)}
+          style={{ padding: "8px", width: "220px" }}
+        />
+      </div>
+
+      <div>
+        <h2>Последние видео</h2>
+
+        {loading ? (
+          <p>Загрузка...</p>
+        ) : filteredVideos.length === 0 ? (
+          <p>Видео не найдены</p>
         ) : (
-          <p>Не удалось получить пользователя</p>
-        )}
-      </section>
+          filteredVideos.map((video) => {
+            const previewUrl = getPreviewUrl(video);
 
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <h2>Фильтры видео</h2>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "12px",
-            alignItems: "end",
-          }}
-        >
-          <div>
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              По названию
-            </label>
-            <input
-              type="text"
-              value={titleFilter}
-              onChange={(e) => setTitleFilter(e.target.value)}
-              placeholder="Например, video"
-              style={{ width: "100%", padding: "8px" }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              По пользователю
-            </label>
-            <input
-              type="text"
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-              placeholder="Например, Test User"
-              style={{ width: "100%", padding: "8px" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={handleApplyFilters}>Применить</button>
-            <button onClick={handleResetFilters}>Сбросить</button>
-          </div>
-        </div>
-      </section>
-
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: "12px",
-          padding: "16px",
-        }}
-      >
-        <h2>Последние загруженные видео</h2>
-
-        {loadingVideos ? (
-          <p>Загрузка видео...</p>
-        ) : videos.length === 0 ? (
-          <p>Видео пока нет</p>
-        ) : (
-          <div style={{ display: "grid", gap: "16px" }}>
-            {videos.map((video) => (
+            return (
               <div
                 key={video.id}
                 style={{
-                  border: "1px solid #e5e5e5",
-                  borderRadius: "12px",
+                  border: "1px solid #ccc",
+                  borderRadius: "10px",
                   padding: "16px",
+                  marginBottom: "16px",
                 }}
               >
-                <p>
-                  <strong>Файл:</strong> {video.filename}
-                </p>
-                <p>
-                  <strong>Пользователь:</strong>{" "}
-                  {video.user_full_name || video.user_email || "—"}
-                </p>
-                <p>
-                  <strong>Email:</strong> {video.user_email || "—"}
-                </p>
-                <p>
-                  <strong>Камера ID:</strong> {video.camera_id || "—"}
-                </p>
-                <p>
-                  <strong>Статус:</strong> {video.status}
-                </p>
-                <p>
-                  <strong>Дата загрузки:</strong>{" "}
-                  {video.uploaded_at
-                    ? new Date(video.uploaded_at).toLocaleString()
-                    : "—"}
-                </p>
-
-                {video.preview_url ? (
-                  <div style={{ margin: "12px 0" }}>
-                    <img
-                      src={video.preview_url}
-                      alt={video.filename}
-                      style={{
-                        width: "200px",
-                        maxWidth: "100%",
-                        height: "200px",
-                        objectFit: "cover",
-                        borderRadius: "8px",
-                        border: "1px solid #ddd",
-                        display: "block",
-                      }}
-                    />
-                  </div>
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt={video?.filename || "preview"}
+                    style={{
+                      width: "220px",
+                      height: "140px",
+                      objectFit: "cover",
+                      display: "block",
+                      marginBottom: "12px",
+                    }}
+                  />
                 ) : null}
 
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {video.video_url ? (
-                    <a href={video.video_url} target="_blank" rel="noreferrer">
-                      Открыть видео
-                    </a>
-                  ) : null}
+                <p>
+                  <strong>Файл:</strong> {video?.filename || "-"}
+                </p>
+                <p>
+                  <strong>Пользователь:</strong> {video?.user_full_name || "-"}
+                </p>
+                <p>
+                  <strong>Камера:</strong> {video?.camera_id || "-"}
+                </p>
+                <p>
+                  <strong>Дата загрузки:</strong> {video?.uploaded_at || "-"}
+                </p>
+                <p>
+                  <strong>Статус:</strong> {video?.status || "-"}
+                </p>
 
-                  {video.preview_url ? (
-                    <a href={video.preview_url} target="_blank" rel="noreferrer">
-                      Открыть превью
-                    </a>
-                  ) : null}
+                <button onClick={() => handleOpenVideo(video)}>
+                  Смотреть видео
+                </button>
 
-                  <button onClick={() => handleDelete(video.id)}>
-                    Удалить
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleDelete(video.id)}
+                  style={{ marginLeft: "10px", color: "red" }}
+                >
+                  Удалить
+                </button>
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
-      </section>
+      </div>
     </div>
   );
 }

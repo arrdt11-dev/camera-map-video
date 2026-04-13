@@ -1,84 +1,128 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 async function parseError(response, defaultMessage) {
-  const error = await response.json().catch(() => ({}));
-  throw new Error(error.detail || defaultMessage);
+  try {
+    const data = await response.json();
+    return data?.detail || defaultMessage;
+  } catch {
+    return defaultMessage;
+  }
 }
 
+// ===== AUTH =====
+
 export async function loginUser(payload) {
-  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+  const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) await parseError(res, "Ошибка входа");
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка входа"));
+  }
+
   return res.json();
 }
 
 export async function registerUser(payload) {
-  const res = await fetch(`${API_BASE_URL}/auth/register`, {
+  const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) await parseError(res, "Ошибка регистрации");
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка регистрации"));
+  }
+
   return res.json();
 }
 
 export async function getMe(token) {
-  const res = await fetch(`${API_BASE_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const res = await fetch(`${API_URL}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 
-  if (!res.ok) await parseError(res, "Ошибка пользователя");
+  if (res.status === 401) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка получения пользователя"));
+  }
+
   return res.json();
 }
 
-export async function getCamerasGeoJson() {
-  const res = await fetch(`${API_BASE_URL}/cameras/geojson`);
-  if (!res.ok) throw new Error("Ошибка камер");
+// ===== CAMERAS =====
+
+export async function getCamerasGeoJson(params = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (params.search) {
+    searchParams.set("search", params.search);
+  }
+
+  if (params.min_videos !== undefined && params.min_videos !== null && params.min_videos !== "") {
+    searchParams.set("min_videos", String(params.min_videos));
+  }
+
+  const queryString = searchParams.toString();
+  const url = queryString
+    ? `${API_URL}/cameras/geojson?${queryString}`
+    : `${API_URL}/cameras/geojson`;
+
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка получения камер"));
+  }
+
   return res.json();
 }
 
-export async function getVideos(token, filters = {}) {
-  const params = new URLSearchParams();
+// ===== VIDEOS =====
 
-  if (filters.camera_id) params.append("camera_id", filters.camera_id);
-  if (filters.title) params.append("title", filters.title);
-  if (filters.user) params.append("user", filters.user);
-
-  const url = `${API_BASE_URL}/videos/?${params.toString()}`;
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function getVideos(token) {
+  const res = await fetch(`${API_URL}/videos`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 
-  if (!res.ok) await parseError(res, "Ошибка видео");
+  if (res.status === 401) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка получения видео"));
+  }
+
   return res.json();
 }
 
-export async function uploadVideo(token, { file, camera_id }) {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("camera_id", camera_id);
-
-  const res = await fetch(`${API_BASE_URL}/videos/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-
-  if (!res.ok) await parseError(res, "Ошибка загрузки");
-  return res.json();
-}
-
-export async function deleteVideo(token, id) {
-  const res = await fetch(`${API_BASE_URL}/videos/${id}`, {
+export async function deleteVideo(videoId, token) {
+  const res = await fetch(`${API_URL}/videos/${videoId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 
-  if (!res.ok) await parseError(res, "Ошибка удаления");
+  if (res.status === 401) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Ошибка удаления видео"));
+  }
+
+  return true;
 }

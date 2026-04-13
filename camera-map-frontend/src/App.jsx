@@ -9,37 +9,62 @@ export default function App() {
   const [token, setToken] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("access_token");
-    if (saved) {
-      setToken(saved);
+    const savedToken = localStorage.getItem("access_token");
+
+    if (savedToken) {
+      setToken(savedToken);
       setPage("map");
+    } else {
+      setPage("login");
     }
   }, []);
 
-  function handleLogin(access, refresh) {
-    localStorage.setItem("access_token", access);
-    if (refresh) localStorage.setItem("refresh_token", refresh);
-    setToken(access);
+  function handleLogin(accessToken) {
+    localStorage.setItem("access_token", accessToken);
+    setToken(accessToken);
     setPage("map");
   }
 
-  function logout() {
-    localStorage.clear();
+  function handleLogout() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     setToken("");
     setPage("login");
   }
 
-  if (page === "login") {
-    return <LoginPage onLogin={handleLogin} onOpenRegister={() => setPage("register")} />;
+  if (page === "register") {
+    return (
+      <RegisterPage
+        onSuccess={() => setPage("login")}
+        onBack={() => setPage("login")}
+      />
+    );
   }
 
-  if (page === "register") {
-    return <RegisterPage onOpenLogin={() => setPage("login")} />;
+  if (page === "map") {
+    return (
+      <MapPage
+        token={token}
+        onLogout={handleLogout}
+        onOpenProfile={() => setPage("profile")}
+      />
+    );
   }
 
   if (page === "profile") {
-    return <ProfilePage token={token} onBack={() => setPage("map")} onLogout={logout} />;
+    return (
+      <ProfilePage
+        token={token}
+        onLogout={handleLogout}
+        onBack={() => setPage("map")}
+      />
+    );
   }
 
-  return <MapPage token={token} onLogout={logout} onOpenProfile={() => setPage("profile")} />;
+  return (
+    <LoginPage
+      onLogin={handleLogin}
+      onOpenRegister={() => setPage("register")}
+    />
+  );
 }
