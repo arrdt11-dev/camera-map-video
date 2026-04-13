@@ -9,73 +9,37 @@ export default function App() {
   const [token, setToken] = useState("");
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("access_token");
-
-    if (savedToken) {
-      setToken(savedToken);
+    const saved = localStorage.getItem("access_token");
+    if (saved) {
+      setToken(saved);
       setPage("map");
-    } else {
-      setPage("login");
     }
   }, []);
 
-  function handleLogin(accessToken) {
-    localStorage.setItem("access_token", accessToken);
-    setToken(accessToken);
+  function handleLogin(access, refresh) {
+    localStorage.setItem("access_token", access);
+    if (refresh) localStorage.setItem("refresh_token", refresh);
+    setToken(access);
     setPage("map");
   }
 
-  function handleLogout() {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  function logout() {
+    localStorage.clear();
     setToken("");
     setPage("login");
   }
 
-  function openRegister() {
-    setPage("register");
-  }
-
-  function openLogin() {
-    setPage("login");
-  }
-
-  function openProfile() {
-    setPage("profile");
-  }
-
-  function openMap() {
-    setPage("map");
+  if (page === "login") {
+    return <LoginPage onLogin={handleLogin} onOpenRegister={() => setPage("register")} />;
   }
 
   if (page === "register") {
-    return <RegisterPage onOpenLogin={openLogin} />;
+    return <RegisterPage onOpenLogin={() => setPage("login")} />;
   }
 
   if (page === "profile") {
-    return (
-      <ProfilePage
-        token={token}
-        onBack={openMap}
-        onLogout={handleLogout}
-      />
-    );
+    return <ProfilePage token={token} onBack={() => setPage("map")} onLogout={logout} />;
   }
 
-  if (page === "map" && token) {
-    return (
-      <MapPage
-        token={token}
-        onLogout={handleLogout}
-        onOpenProfile={openProfile}
-      />
-    );
-  }
-
-  return (
-    <LoginPage
-      onLogin={handleLogin}
-      onOpenRegister={openRegister}
-    />
-  );
+  return <MapPage token={token} onLogout={logout} onOpenProfile={() => setPage("profile")} />;
 }
