@@ -1,91 +1,170 @@
 import { useState } from "react";
 import { loginUser } from "../api";
 
-export default function LoginPage({ onLogin, onOpenRegister }) {
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-  });
+const pageStyle = {
+  minHeight: "100vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#f3f4f6",
+  padding: "20px",
+  boxSizing: "border-box",
+};
+
+const cardStyle = {
+  width: "100%",
+  maxWidth: "460px",
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "28px",
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+};
+
+const titleStyle = {
+  margin: "0 0 24px 0",
+  fontSize: "32px",
+  fontWeight: 800,
+  color: "#111827",
+  textAlign: "center",
+};
+
+const fieldWrapStyle = {
+  marginBottom: "16px",
+};
+
+const labelStyle = {
+  display: "block",
+  marginBottom: "8px",
+  fontSize: "15px",
+  fontWeight: 700,
+  color: "#374151",
+};
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  border: "1px solid #d1d5db",
+  fontSize: "15px",
+  outline: "none",
+};
+
+const errorStyle = {
+  marginBottom: "16px",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  color: "#b91c1c",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+
+const actionsStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  marginTop: "8px",
+};
+
+const primaryButtonStyle = {
+  border: "none",
+  borderRadius: "12px",
+  padding: "12px 18px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#2563eb",
+  color: "#ffffff",
+};
+
+const secondaryButtonStyle = {
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "12px 18px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#ffffff",
+  color: "#111827",
+};
+
+export default function LoginPage({ onLoginSuccess, onOpenRegister }) {
+  const [email, setEmail] = useState("test@test.com");
+  const [password, setPassword] = useState("123456");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleChange(event) {
-    const { name, value } = event.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
-    setError("");
-    setLoading(true);
 
     try {
-      const data = await loginUser(form);
+      setLoading(true);
+      setError("");
 
-      if (!data.access_token) {
-        throw new Error("Сервер не вернул access_token");
+      const data = await loginUser({
+        email,
+        password,
+      });
+
+      if (typeof onLoginSuccess !== "function") {
+        throw new Error("Функция onLoginSuccess не передана в LoginPage");
       }
 
-      if (data.refresh_token) {
-        localStorage.setItem("refresh_token", data.refresh_token);
-      }
-
-      onLogin(data.access_token);
+      onLoginSuccess(data.access_token, data.refresh_token);
     } catch (e) {
-      setError(e.message || "Ошибка входа");
+      setError(e.message || "Ошибка авторизации");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ padding: "24px", maxWidth: "420px", margin: "0 auto" }}>
-      <h1>Авторизация</h1>
+    <div style={pageStyle}>
+      <form style={cardStyle} onSubmit={handleSubmit}>
+        <h1 style={titleStyle}>Авторизация</h1>
 
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: "12px" }}>
-          <label>Email</label>
-          <br />
+        {error ? <div style={errorStyle}>{error}</div> : null}
+
+        <div style={fieldWrapStyle}>
+          <label style={labelStyle}>Email</label>
           <input
+            style={inputStyle}
             type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Введите email"
             required
-            style={{ width: "100%", padding: "8px" }}
           />
         </div>
 
-        <div style={{ marginBottom: "12px" }}>
-          <label>Пароль</label>
-          <br />
+        <div style={fieldWrapStyle}>
+          <label style={labelStyle}>Пароль</label>
           <input
+            style={inputStyle}
             type="password"
-            name="password"
-            value={form.password}
-            onChange={handleChange}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Введите пароль"
             required
-            style={{ width: "100%", padding: "8px" }}
           />
         </div>
 
-        {error && (
-          <p style={{ color: "red" }}>{error}</p>
-        )}
+        <div style={actionsStyle}>
+          <button type="submit" style={primaryButtonStyle} disabled={loading}>
+            {loading ? "Вход..." : "Войти"}
+          </button>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Входим..." : "Войти"}
-        </button>
+          <button
+            type="button"
+            style={secondaryButtonStyle}
+            onClick={onOpenRegister}
+            disabled={loading}
+          >
+            Регистрация
+          </button>
+        </div>
       </form>
-
-      <div style={{ marginTop: "16px" }}>
-        <button type="button" onClick={onOpenRegister}>
-          Регистрация
-        </button>
-      </div>
     </div>
   );
 }

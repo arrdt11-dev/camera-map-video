@@ -1,423 +1,572 @@
 import { useEffect, useMemo, useState } from "react";
-import { getVideos, deleteVideo } from "../api";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { deleteVideo, getVideos, uploadVideoForCamera } from "../api";
 
-const cardStyle = {
-  border: "1px solid #e5e7eb",
-  borderRadius: "16px",
-  padding: "18px",
-  background: "#fff",
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+});
+
+const pageStyle = {
+  minHeight: "100vh",
+  background: "#f3f4f6",
+  padding: "24px 16px",
+  boxSizing: "border-box",
 };
 
-const buttonStyle = {
+const containerStyle = {
+  maxWidth: "1400px",
+  margin: "0 auto",
+};
+
+const topBarStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  marginBottom: "18px",
+  flexWrap: "wrap",
+};
+
+const titleStyle = {
+  margin: 0,
+  fontSize: "28px",
+  fontWeight: 800,
+  color: "#111827",
+};
+
+const buttonRowStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
+const primaryButtonStyle = {
+  border: "none",
+  borderRadius: "12px",
+  padding: "12px 16px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#2563eb",
+  color: "#ffffff",
+};
+
+const secondaryButtonStyle = {
+  border: "1px solid #d1d5db",
+  borderRadius: "12px",
+  padding: "12px 16px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#ffffff",
+  color: "#111827",
+};
+
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns: "360px 1fr",
+  gap: "20px",
+  alignItems: "start",
+};
+
+const cardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "20px",
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+};
+
+const sectionTitleStyle = {
+  margin: "0 0 14px 0",
+  fontSize: "18px",
+  fontWeight: 800,
+  color: "#111827",
+};
+
+const infoTextStyle = {
+  margin: "0 0 10px 0",
+  color: "#374151",
+  lineHeight: 1.5,
+};
+
+const dividerStyle = {
+  border: 0,
+  borderTop: "1px solid #e5e7eb",
+  margin: "18px 0",
+};
+
+const uploadRowStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+};
+
+const uploadButtonStyle = {
+  border: "none",
+  borderRadius: "10px",
+  padding: "12px 14px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#2563eb",
+  color: "#ffffff",
+};
+
+const disabledButtonStyle = {
+  ...uploadButtonStyle,
+  opacity: 0.6,
+  cursor: "not-allowed",
+};
+
+const mapWrapperStyle = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "20px",
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+};
+
+const mapStyle = {
+  width: "100%",
+  height: "620px",
+  borderRadius: "14px",
+  overflow: "hidden",
+};
+
+const videoCardStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "14px",
+  marginBottom: "12px",
+  background: "#f9fafb",
+};
+
+const videoTitleStyle = {
+  margin: "0 0 10px 0",
+  fontSize: "16px",
+  fontWeight: 800,
+  color: "#111827",
+  wordBreak: "break-word",
+};
+
+const metaStyle = {
+  margin: "0 0 8px 0",
+  color: "#4b5563",
+  fontSize: "14px",
+  lineHeight: 1.4,
+};
+
+const videoButtonRowStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  marginTop: "12px",
+};
+
+const openButtonStyle = {
   border: "none",
   borderRadius: "10px",
   padding: "10px 14px",
   cursor: "pointer",
+  fontWeight: 700,
+  background: "#0f172a",
+  color: "#ffffff",
+};
+
+const dangerButtonStyle = {
+  border: "1px solid #fca5a5",
+  borderRadius: "10px",
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 700,
+  background: "#ffffff",
+  color: "#dc2626",
+};
+
+const errorStyle = {
+  marginTop: "12px",
+  color: "#dc2626",
   fontWeight: 600,
 };
 
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: "10px",
-  border: "1px solid #d1d5db",
-  outline: "none",
-  boxSizing: "border-box",
+const successStyle = {
+  marginTop: "12px",
+  color: "#059669",
+  fontWeight: 600,
 };
 
-export default function LocationPage({ token, cameraId, onBack }) {
+function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+
+  try {
+    return new Date(value).toLocaleString("ru-RU");
+  } catch {
+    return value;
+  }
+}
+
+function getCameraCoords(location) {
+  const lat =
+    Number(location?.camera_latitude) ||
+    Number(location?.latitude) ||
+    Number(location?.lat) ||
+    Number(location?.properties?.camera_latitude) ||
+    Number(location?.properties?.latitude);
+
+  const lng =
+    Number(location?.camera_longitude) ||
+    Number(location?.longitude) ||
+    Number(location?.lng) ||
+    Number(location?.properties?.camera_longitude) ||
+    Number(location?.properties?.longitude);
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return [lat, lng];
+  }
+
+  const coordinates = location?.geometry?.coordinates;
+
+  if (Array.isArray(coordinates) && coordinates.length >= 2) {
+    const [geoLng, geoLat] = coordinates.map(Number);
+
+    if (Number.isFinite(geoLat) && Number.isFinite(geoLng)) {
+      return [geoLat, geoLng];
+    }
+  }
+
+  return [55.751244, 37.618423];
+}
+
+function matchesCamera(video, location, cameraId) {
+  const values = [
+    video?.camera_id,
+    video?.camera?.camera_id,
+    video?.camera?.id,
+    video?.camera_identifier,
+    video?.cameraId,
+    video?.camera?.cameraId,
+
+    location?.id,
+    location?.camera_id,
+    location?.properties?.id,
+    location?.properties?.camera_id,
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  const leftSide = [
+    video?.camera_id,
+    video?.camera?.camera_id,
+    video?.camera?.id,
+    video?.camera_identifier,
+    video?.cameraId,
+    video?.camera?.cameraId,
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  const rightSide = [
+    cameraId,
+    location?.id,
+    location?.camera_id,
+    location?.properties?.id,
+    location?.properties?.camera_id,
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  return leftSide.some((left) => rightSide.includes(left)) || values.includes(String(cameraId));
+}
+
+export default function LocationPage({
+  location,
+  token,
+  onBack,
+  onOpenProfile,
+  onLogout,
+}) {
   const [videos, setVideos] = useState([]);
-  const [tab, setTab] = useState("videos");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [videoFilters, setVideoFilters] = useState({
-    title: "",
-    user: "",
-  });
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [videosError, setVideosError] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [uploadSuccess, setUploadSuccess] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [deletingId, setDeletingId] = useState("");
 
-  const actualToken = useMemo(
-    () => token || localStorage.getItem("access_token"),
-    [token]
-  );
+  const authToken = token || localStorage.getItem("access_token") || "";
+  const coords = useMemo(() => getCameraCoords(location), [location]);
+  const [lat, lng] = coords;
 
-  async function loadLocationData(customFilters = videoFilters) {
-    if (!actualToken) {
-      setError("Нет токена авторизации");
-      setLoading(false);
-      return;
-    }
+  const cameraId =
+    location?.camera_id ||
+    location?.properties?.camera_id ||
+    location?.id ||
+    location?.properties?.id ||
+    "";
 
-    if (!cameraId) {
-      setError("Камера не выбрана");
-      setLoading(false);
-      return;
-    }
+  const cameraName =
+    location?.camera_name ||
+    location?.properties?.camera_name ||
+    "Камера";
 
+  async function loadVideos() {
     try {
-      setError("");
-      setLoading(true);
+      setLoadingVideos(true);
+      setVideosError("");
 
-      const data = await getVideos(actualToken, {
-        camera_id: cameraId,
-        title: customFilters.title,
-        user: customFilters.user,
+      const data = await getVideos(authToken);
+      const items = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+      const filtered = items.filter((video) => matchesCamera(video, location, cameraId));
+
+      filtered.sort((a, b) => {
+        const aTime = new Date(a?.uploaded_at || 0).getTime();
+        const bTime = new Date(b?.uploaded_at || 0).getTime();
+        return bTime - aTime;
       });
 
-      setVideos(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось загрузить данные локации");
+      setVideos(filtered);
+    } catch (error) {
+      console.error("Ошибка загрузки видео камеры:", error);
       setVideos([]);
+      setVideosError(error.message || "Не удалось загрузить видео этой камеры");
     } finally {
-      setLoading(false);
+      setLoadingVideos(false);
     }
   }
 
   useEffect(() => {
-    loadLocationData();
-  }, [cameraId, token]);
+    loadVideos();
+  }, [cameraId]);
 
-  async function handleApplyVideoFilters() {
-    await loadLocationData(videoFilters);
-  }
+  async function handleUpload(event) {
+    event.preventDefault();
 
-  async function handleResetVideoFilters() {
-    const reset = { title: "", user: "" };
-    setVideoFilters(reset);
-    await loadLocationData(reset);
-  }
-
-  async function handleDelete(videoId) {
-    if (!actualToken) {
-      setError("Нет токена авторизации");
+    if (!authToken) {
+      setUploadError("Нет access token. Войди в систему заново.");
+      setUploadSuccess("");
       return;
     }
 
+    if (!selectedFile) {
+      setUploadError("Сначала выбери mp4 файл");
+      setUploadSuccess("");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError("");
+      setUploadSuccess("");
+
+      await uploadVideoForCamera({
+        token: authToken,
+        file: selectedFile,
+        cameraId,
+        latitude: lat,
+        longitude: lng,
+      });
+
+      const input = document.getElementById("camera-video-upload-input");
+      if (input) {
+        input.value = "";
+      }
+
+      setSelectedFile(null);
+      setUploadSuccess("Видео успешно загружено");
+      await loadVideos();
+    } catch (error) {
+      console.error("Ошибка загрузки видео:", error);
+      setUploadError(error.message || "Не удалось загрузить видео");
+      setUploadSuccess("");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDelete(videoId) {
     const confirmed = window.confirm("Удалить это видео?");
     if (!confirmed) {
       return;
     }
 
     try {
-      setNotice("");
-      await deleteVideo(actualToken, videoId);
-      setNotice("Видео удалено");
-      await loadLocationData();
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Не удалось удалить видео");
+      setDeletingId(videoId);
+      await deleteVideo(videoId, authToken);
+      await loadVideos();
+    } catch (error) {
+      console.error("Ошибка удаления видео:", error);
+      alert(error.message || "Не удалось удалить видео");
+    } finally {
+      setDeletingId("");
     }
   }
 
   return (
-    <div
-      style={{
-        padding: "24px",
-        maxWidth: "1200px",
-        margin: "0 auto",
-        background: "linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)",
-        minHeight: "100vh",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "18px" }}>
-        <button
-          onClick={onBack}
-          style={{ ...buttonStyle, background: "#e5e7eb", color: "#111827" }}
-        >
-          Назад к карте
-        </button>
+    <div style={pageStyle}>
+      <div style={containerStyle}>
+        <div style={topBarStyle}>
+          <h1 style={titleStyle}>{cameraName}</h1>
 
-        <div style={{ alignSelf: "center", color: "#374151", fontWeight: 600 }}>
-          Локация камеры: {cameraId || "—"}
+          <div style={buttonRowStyle}>
+            <button type="button" style={secondaryButtonStyle} onClick={onOpenProfile}>
+              Личный кабинет
+            </button>
+            <button type="button" style={secondaryButtonStyle} onClick={onLogout}>
+              Выйти
+            </button>
+            <button type="button" style={primaryButtonStyle} onClick={onBack}>
+              Назад к карте
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <h1 style={{ margin: 0, fontSize: "44px", lineHeight: 1.1 }}>
-          Информация о локации
-        </h1>
-      </div>
+        <div style={gridStyle}>
+          <div style={cardStyle}>
+            <h2 style={sectionTitleStyle}>Информация о камере</h2>
 
-      {error ? (
-        <div
-          style={{
-            ...cardStyle,
-            borderColor: "#fecaca",
-            background: "#fef2f2",
-            color: "#991b1b",
-            marginBottom: "16px",
-          }}
-        >
-          {error}
-        </div>
-      ) : null}
+            <p style={infoTextStyle}>
+              <strong>ID камеры:</strong> {cameraId || "—"}
+            </p>
+            <p style={infoTextStyle}>
+              <strong>Координаты:</strong> {lat}, {lng}
+            </p>
+            <p style={infoTextStyle}>
+              <strong>Видео:</strong> {videos.length}
+            </p>
 
-      {notice ? (
-        <div
-          style={{
-            ...cardStyle,
-            borderColor: "#bfdbfe",
-            background: "#eff6ff",
-            color: "#1d4ed8",
-            marginBottom: "16px",
-          }}
-        >
-          {notice}
-        </div>
-      ) : null}
+            <hr style={dividerStyle} />
 
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <button
-          onClick={() => setTab("videos")}
-          style={{
-            ...buttonStyle,
-            background: tab === "videos" ? "#111827" : "#e5e7eb",
-            color: tab === "videos" ? "#fff" : "#111827",
-          }}
-        >
-          Видео
-        </button>
+            <h2 style={sectionTitleStyle}>Импорт видео</h2>
 
-        <button
-          onClick={() => setTab("analytics")}
-          style={{
-            ...buttonStyle,
-            background: tab === "analytics" ? "#111827" : "#e5e7eb",
-            color: tab === "analytics" ? "#fff" : "#111827",
-          }}
-        >
-          Анализы
-        </button>
-      </div>
+            <form onSubmit={handleUpload} style={uploadRowStyle}>
+              <input
+                id="camera-video-upload-input"
+                type="file"
+                accept="video/mp4"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setSelectedFile(file);
+                  setUploadError("");
+                  setUploadSuccess("");
+                }}
+              />
 
-      {tab === "videos" ? (
-        <>
-          <div style={{ ...cardStyle, marginBottom: "18px" }}>
-            <h2 style={{ marginTop: 0 }}>Фильтры видео</h2>
+              <button
+                type="submit"
+                style={uploading ? disabledButtonStyle : uploadButtonStyle}
+                disabled={uploading}
+              >
+                {uploading ? "Загрузка..." : "Загрузить видео"}
+              </button>
+            </form>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: "12px",
-                alignItems: "end",
-              }}
-            >
-              <div>
-                <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>
-                  По названию
-                </label>
-                <input
-                  style={inputStyle}
-                  placeholder="Например, video"
-                  value={videoFilters.title}
-                  onChange={(e) =>
-                    setVideoFilters((prev) => ({ ...prev, title: e.target.value }))
-                  }
-                />
-              </div>
+            {uploadError ? <div style={errorStyle}>{uploadError}</div> : null}
+            {uploadSuccess ? <div style={successStyle}>{uploadSuccess}</div> : null}
 
-              <div>
-                <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>
-                  По пользователю
-                </label>
-                <input
-                  style={inputStyle}
-                  placeholder="Например, Test User"
-                  value={videoFilters.user}
-                  onChange={(e) =>
-                    setVideoFilters((prev) => ({ ...prev, user: e.target.value }))
-                  }
-                />
-              </div>
+            <hr style={dividerStyle} />
 
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={handleApplyVideoFilters}
-                  style={{ ...buttonStyle, background: "#111827", color: "#fff" }}
-                >
-                  Применить
-                </button>
-                <button
-                  onClick={handleResetVideoFilters}
-                  style={{ ...buttonStyle, background: "#e5e7eb", color: "#111827" }}
-                >
-                  Сбросить
-                </button>
-              </div>
-            </div>
+            <h2 style={sectionTitleStyle}>Видео этой камеры</h2>
+
+            {loadingVideos ? <p style={metaStyle}>Загрузка видео...</p> : null}
+            {videosError ? <p style={errorStyle}>{videosError}</p> : null}
+
+            {!loadingVideos && !videosError && videos.length === 0 ? (
+              <p style={metaStyle}>У этой камеры пока нет загруженных видео.</p>
+            ) : null}
+
+            {!loadingVideos &&
+              !videosError &&
+              videos.map((video) => {
+                const openUrl =
+                  video?.file_url ||
+                  video?.video_url ||
+                  video?.url ||
+                  video?.public_url ||
+                  video?.download_url;
+
+                return (
+                  <div key={video.id} style={videoCardStyle}>
+                    <h3 style={videoTitleStyle}>{video.filename || "video.mp4"}</h3>
+
+                    <p style={metaStyle}>
+                      <strong>Статус:</strong> {video.status || "uploaded"}
+                    </p>
+
+                    <p style={metaStyle}>
+                      <strong>Загружено:</strong> {formatDate(video.uploaded_at)}
+                    </p>
+
+                    <div style={videoButtonRowStyle}>
+                      {openUrl ? (
+                        <a
+                          href={openUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
+                          <button type="button" style={openButtonStyle}>
+                            Открыть
+                          </button>
+                        </a>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        style={dangerButtonStyle}
+                        onClick={() => handleDelete(video.id)}
+                        disabled={deletingId === video.id}
+                      >
+                        {deletingId === video.id ? "Удаление..." : "Удалить"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
 
-          <section style={cardStyle}>
-            <h2 style={{ marginTop: 0 }}>Видео по локации</h2>
+          <div style={mapWrapperStyle}>
+            <h2 style={sectionTitleStyle}>Положение на карте</h2>
 
-            {loading ? (
-              <p>Загрузка...</p>
-            ) : videos.length === 0 ? (
-              <p>Для этой локации пока нет видео</p>
-            ) : (
-              <div style={{ display: "grid", gap: "16px" }}>
-                {videos.map((video) => (
-                  <div
-                    key={video.id}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "16px",
-                      padding: "16px",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(220px, 260px) 1fr",
-                        gap: "18px",
-                        alignItems: "start",
-                      }}
-                    >
-                      <div>
-                        {video.preview_url ? (
-                          <img
-                            src={video.preview_url}
-                            alt={video.filename}
-                            style={{
-                              width: "100%",
-                              aspectRatio: "1 / 1",
-                              objectFit: "cover",
-                              borderRadius: "14px",
-                              border: "1px solid #ddd",
-                              display: "block",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: "100%",
-                              aspectRatio: "1 / 1",
-                              borderRadius: "14px",
-                              border: "1px dashed #cbd5e1",
-                              display: "grid",
-                              placeItems: "center",
-                              color: "#64748b",
-                              background: "#fff",
-                            }}
-                          >
-                            Нет превью
-                          </div>
-                        )}
-                      </div>
+            <div style={mapStyle}>
+              <MapContainer
+                center={[lat, lng]}
+                zoom={15}
+                scrollWheelZoom={true}
+                style={{ width: "100%", height: "100%" }}
+              >
+                <TileLayer
+                  attribution="&copy; OpenStreetMap contributors"
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
 
-                      <div>
-                        <div style={{ display: "grid", gap: "8px", marginBottom: "12px" }}>
-                          <div>
-                            <strong>Файл:</strong> {video.filename}
-                          </div>
-                          <div>
-                            <strong>Пользователь:</strong>{" "}
-                            {video.user_full_name || video.user_email || "—"}
-                          </div>
-                          <div>
-                            <strong>Email:</strong> {video.user_email || "—"}
-                          </div>
-                          <div>
-                            <strong>Статус:</strong> {video.status}
-                          </div>
-                          <div>
-                            <strong>Дата загрузки:</strong>{" "}
-                            {video.uploaded_at
-                              ? new Date(video.uploaded_at).toLocaleString()
-                              : "—"}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          {video.video_url ? (
-                            <a href={video.video_url} target="_blank" rel="noreferrer">
-                              Открыть видео
-                            </a>
-                          ) : null}
-
-                          {video.preview_url ? (
-                            <a href={video.preview_url} target="_blank" rel="noreferrer">
-                              Открыть превью
-                            </a>
-                          ) : null}
-
-                          <button
-                            onClick={() => handleDelete(video.id)}
-                            style={{
-                              ...buttonStyle,
-                              background: "#fee2e2",
-                              color: "#991b1b",
-                            }}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      ) : (
-        <section style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>Анализы</h2>
-
-          {loading ? (
-            <p>Загрузка...</p>
-          ) : videos.length === 0 ? (
-            <p>Нет данных для анализа</p>
-          ) : (
-            <div style={{ display: "grid", gap: "16px" }}>
-              {videos.map((video) => (
-                <div
-                  key={video.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "16px",
-                    padding: "16px",
-                    background: "#fafafa",
-                  }}
-                >
-                  <div style={{ display: "grid", gap: "8px" }}>
+                <Marker position={[lat, lng]}>
+                  <Popup>
                     <div>
-                      <strong>Видео:</strong> {video.filename}
+                      <strong>{cameraName}</strong>
+                      <br />
+                      ID: {cameraId}
+                      <br />
+                      Координаты: {lat}, {lng}
                     </div>
-                    <div>
-                      <strong>Автор:</strong>{" "}
-                      {video.user_full_name || video.user_email || "—"}
-                    </div>
-                    <div>
-                      <strong>Длительность:</strong> 00:10:00
-                    </div>
-                    <div>
-                      <strong>Разрешение:</strong> 1920x1080
-                    </div>
-                    <div>
-                      <strong>FPS:</strong> 30
-                    </div>
-                    <div>
-                      <strong>Время суток:</strong> день
-                    </div>
-                    <div>
-                      <strong>Обработка трасс:</strong> готово
-                    </div>
-                    <div>
-                      <strong>Количество расчетов:</strong> 1
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  </Popup>
+                </Marker>
+              </MapContainer>
             </div>
-          )}
-        </section>
-      )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

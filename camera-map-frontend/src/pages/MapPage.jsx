@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCamerasGeoJson, getVideos } from "../api";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { getCamerasGeoJson } from "../api";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
 
 const pageStyle = {
   minHeight: "100vh",
   background: "#f3f4f6",
-  padding: "24px",
+  padding: "24px 16px",
   boxSizing: "border-box",
 };
 
@@ -13,29 +24,23 @@ const containerStyle = {
   margin: "0 auto",
 };
 
-const headerStyle = {
+const topBarStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: "12px",
-  marginBottom: "24px",
+  marginBottom: "18px",
   flexWrap: "wrap",
 };
 
 const titleStyle = {
   margin: 0,
-  fontSize: "32px",
+  fontSize: "28px",
   fontWeight: 800,
   color: "#111827",
 };
 
-const subtitleStyle = {
-  margin: "6px 0 0 0",
-  color: "#6b7280",
-  fontSize: "15px",
-};
-
-const actionsStyle = {
+const buttonRowStyle = {
   display: "flex",
   gap: "10px",
   flexWrap: "wrap",
@@ -47,7 +52,7 @@ const primaryButtonStyle = {
   padding: "10px 16px",
   cursor: "pointer",
   fontWeight: 700,
-  background: "#111827",
+  background: "#2563eb",
   color: "#ffffff",
 };
 
@@ -61,430 +66,401 @@ const secondaryButtonStyle = {
   color: "#111827",
 };
 
-const gridStyle = {
+const layoutStyle = {
   display: "grid",
   gridTemplateColumns: "360px 1fr",
-  gap: "20px",
+  gap: "18px",
   alignItems: "start",
 };
 
 const cardStyle = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
   borderRadius: "18px",
-  padding: "18px",
+  border: "1px solid #e5e7eb",
   boxShadow: "0 10px 25px rgba(15, 23, 42, 0.06)",
+  padding: "18px",
 };
 
-const sectionTitleStyle = {
-  margin: "0 0 16px 0",
-  fontSize: "20px",
+const filtersTitleStyle = {
+  fontSize: "18px",
   fontWeight: 800,
+  margin: "0 0 14px 0",
   color: "#111827",
 };
 
-const searchStyle = {
+const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "12px 14px",
-  borderRadius: "12px",
+  padding: "10px 12px",
+  borderRadius: "10px",
   border: "1px solid #d1d5db",
-  outline: "none",
   fontSize: "14px",
-  marginBottom: "14px",
+  outline: "none",
+  background: "#fff",
 };
 
-const cameraListStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "10px",
-};
-
-const cameraButtonStyle = (active) => ({
-  width: "100%",
-  textAlign: "left",
-  border: active ? "2px solid #111827" : "1px solid #e5e7eb",
-  background: active ? "#f9fafb" : "#ffffff",
-  borderRadius: "14px",
-  padding: "14px",
-  cursor: "pointer",
-});
-
-const cameraNameStyle = {
-  fontSize: "16px",
+const labelStyle = {
+  display: "block",
+  fontSize: "13px",
   fontWeight: 700,
-  color: "#111827",
+  color: "#374151",
   marginBottom: "6px",
 };
 
-const cameraMetaStyle = {
-  fontSize: "13px",
-  color: "#6b7280",
-  lineHeight: 1.5,
+const fieldBlockStyle = {
+  marginBottom: "14px",
 };
 
-const emptyStyle = {
-  padding: "18px",
-  borderRadius: "14px",
-  background: "#f9fafb",
-  border: "1px dashed #d1d5db",
-  color: "#6b7280",
+const mapCardStyle = {
+  ...cardStyle,
+  padding: "10px",
+};
+
+const statsStyle = {
   fontSize: "14px",
-};
-
-const selectedCameraBoxStyle = {
-  marginBottom: "18px",
-  padding: "16px",
-  borderRadius: "14px",
-  background: "#f9fafb",
-  border: "1px solid #e5e7eb",
-};
-
-const selectedCameraTitleStyle = {
-  margin: "0 0 8px 0",
-  fontSize: "22px",
-  fontWeight: 800,
-  color: "#111827",
-};
-
-const selectedCameraInfoStyle = {
-  margin: 0,
   color: "#4b5563",
-  lineHeight: 1.6,
+  marginBottom: "12px",
+};
+
+const popupTitleStyle = {
+  fontWeight: 800,
+  fontSize: "16px",
+  marginBottom: "8px",
+  color: "#111827",
+};
+
+const popupLineStyle = {
+  margin: "4px 0",
+  color: "#374151",
   fontSize: "14px",
 };
 
-const videosGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-  gap: "16px",
-};
-
-const videoCardStyle = {
-  border: "1px solid #e5e7eb",
-  borderRadius: "16px",
-  overflow: "hidden",
-  background: "#ffffff",
-};
-
-const previewStyle = {
-  width: "100%",
-  height: "180px",
-  objectFit: "cover",
-  background: "#e5e7eb",
-  display: "block",
-};
-
-const videoContentStyle = {
-  padding: "14px",
-};
-
-const videoTitleStyle = {
-  margin: "0 0 10px 0",
-  fontSize: "16px",
-  fontWeight: 700,
-  color: "#111827",
-  wordBreak: "break-word",
-};
-
-const videoMetaStyle = {
-  margin: "0 0 6px 0",
-  color: "#6b7280",
-  fontSize: "13px",
-  lineHeight: 1.5,
-  wordBreak: "break-word",
-};
-
-const videoActionsStyle = {
-  display: "flex",
-  gap: "10px",
-  marginTop: "14px",
-  flexWrap: "wrap",
-};
-
-const linkButtonStyle = {
-  display: "inline-block",
-  textDecoration: "none",
+const popupButtonStyle = {
+  marginTop: "10px",
+  border: "none",
   borderRadius: "10px",
-  padding: "10px 14px",
+  padding: "8px 12px",
+  cursor: "pointer",
   fontWeight: 700,
   background: "#111827",
   color: "#ffffff",
 };
 
-const ghostLinkButtonStyle = {
-  display: "inline-block",
-  textDecoration: "none",
-  borderRadius: "10px",
-  padding: "10px 14px",
-  fontWeight: 700,
-  background: "#ffffff",
-  color: "#111827",
-  border: "1px solid #d1d5db",
+const loadingStyle = {
+  fontSize: "15px",
+  color: "#374151",
+  padding: "12px 0",
 };
 
-function formatDate(value) {
-  if (!value) return "—";
+const errorStyle = {
+  fontSize: "14px",
+  color: "#b91c1c",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  borderRadius: "12px",
+  padding: "10px 12px",
+  marginBottom: "12px",
+};
 
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+function getFeatureProps(feature) {
+  return feature?.properties || {};
 }
 
-export default function MapPage({ onLogout, onOpenProfile }) {
-  const [cameras, setCameras] = useState([]);
-  const [videos, setVideos] = useState([]);
-  const [selectedCameraId, setSelectedCameraId] = useState("");
-  const [cameraSearch, setCameraSearch] = useState("");
+function toInputNumber(value) {
+  if (value === "" || value === null || value === undefined) {
+    return "";
+  }
+  const num = Number(value);
+  return Number.isNaN(num) ? "" : num;
+}
+
+export default function MapPage({ onLogout, onOpenProfile, onOpenLocation }) {
+  const [features, setFeatures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [draftFilters, setDraftFilters] = useState({
+    search: "",
+    minVideos: "",
+    maxVideos: "",
+    model: "",
+    cameraType: "",
+    cameraClass: "",
+  });
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    search: "",
+    minVideos: "",
+    maxVideos: "",
+    model: "",
+    cameraType: "",
+    cameraClass: "",
+  });
+
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError("");
+    loadCameras(appliedFilters);
+  }, [appliedFilters]);
 
-        const [geojsonData, videosData] = await Promise.all([
-          getCamerasGeoJson(),
-          getVideos(),
-        ]);
+  async function loadCameras(filters) {
+    try {
+      setLoading(true);
+      setError("");
 
-        const features = Array.isArray(geojsonData?.features)
-          ? geojsonData.features
-          : [];
-
-        const videosList = Array.isArray(videosData) ? videosData : [];
-
-        setCameras(features);
-        setVideos(videosList);
-
-        if (features.length > 0) {
-          const firstCameraId = features[0]?.properties?.id || "";
-          setSelectedCameraId(firstCameraId);
-        }
-      } catch (e) {
-        console.error("Ошибка загрузки данных:", e);
-        setError(e?.message || "Не удалось загрузить камеры и видео");
-        setCameras([]);
-        setVideos([]);
-      } finally {
-        setLoading(false);
-      }
+      const data = await getCamerasGeoJson(filters);
+      const nextFeatures = Array.isArray(data?.features) ? data.features : [];
+      setFeatures(nextFeatures);
+    } catch (e) {
+      setError(e.message || "Не удалось загрузить камеры");
+      setFeatures([]);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    loadData();
-  }, []);
+  function handleDraftChange(field, value) {
+    setDraftFilters((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
 
-  const filteredCameras = useMemo(() => {
-    const search = cameraSearch.trim().toLowerCase();
-
-    if (!search) {
-      return cameras;
-    }
-
-    return cameras.filter((item) => {
-      const props = item?.properties || {};
-
-      return [
-        props.camera_name,
-        props.camera_id,
-        props.camera_place,
-        props.model,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(search));
+  function handleApplyFilters() {
+    setAppliedFilters({
+      search: draftFilters.search,
+      minVideos: toInputNumber(draftFilters.minVideos),
+      maxVideos: toInputNumber(draftFilters.maxVideos),
+      model: draftFilters.model,
+      cameraType: draftFilters.cameraType,
+      cameraClass: draftFilters.cameraClass,
     });
-  }, [cameras, cameraSearch]);
+  }
 
-  const selectedCamera = useMemo(() => {
-    return (
-      cameras.find((item) => item?.properties?.id === selectedCameraId) || null
-    );
-  }, [cameras, selectedCameraId]);
+  function handleResetFilters() {
+    const empty = {
+      search: "",
+      minVideos: "",
+      maxVideos: "",
+      model: "",
+      cameraType: "",
+      cameraClass: "",
+    };
 
-  const selectedCameraVideos = useMemo(() => {
-    if (!selectedCameraId) {
-      return [];
-    }
+    setDraftFilters(empty);
+    setAppliedFilters(empty);
+  }
 
-    return videos.filter((video) => video.camera_id === selectedCameraId);
-  }, [videos, selectedCameraId]);
+  const stats = useMemo(() => {
+    const total = features.length;
+    const withVideo = features.filter((item) => {
+      const props = getFeatureProps(item);
+      return Number(props.videos_count || 0) > 0;
+    }).length;
+
+    const videos = features.reduce((sum, item) => {
+      const props = getFeatureProps(item);
+      return sum + Number(props.videos_count || 0);
+    }, 0);
+
+    return {
+      total,
+      withVideo,
+      videos,
+    };
+  }, [features]);
 
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
-        <div style={headerStyle}>
-          <div>
-            <h1 style={titleStyle}>Карта с камерами и видео</h1>
-            <p style={subtitleStyle}>
-              Камеры, загруженные видео и быстрый просмотр по выбранной локации
-            </p>
-          </div>
+        <div style={topBarStyle}>
+          <h1 style={titleStyle}>Карта камер и видео</h1>
 
-          <div style={actionsStyle}>
+          <div style={buttonRowStyle}>
             <button type="button" style={secondaryButtonStyle} onClick={onOpenProfile}>
               Личный кабинет
             </button>
-            <button type="button" style={primaryButtonStyle} onClick={onLogout}>
+            <button type="button" style={secondaryButtonStyle} onClick={onLogout}>
               Выйти
             </button>
           </div>
         </div>
 
-        {loading ? (
-          <div style={cardStyle}>Загрузка данных...</div>
-        ) : error ? (
-          <div style={cardStyle}>{error}</div>
-        ) : (
-          <div style={gridStyle}>
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Камеры</h2>
+        <div style={layoutStyle}>
+          <div style={cardStyle}>
+            <h2 style={filtersTitleStyle}>Фильтры</h2>
 
-              <input
-                type="text"
-                placeholder="Поиск по названию камеры"
-                value={cameraSearch}
-                onChange={(e) => setCameraSearch(e.target.value)}
-                style={searchStyle}
-              />
+            {error ? <div style={errorStyle}>{error}</div> : null}
 
-              <div style={cameraListStyle}>
-                {filteredCameras.length === 0 ? (
-                  <div style={emptyStyle}>Камеры не найдены</div>
-                ) : (
-                  filteredCameras.map((camera) => {
-                    const props = camera?.properties || {};
-                    const isActive = props.id === selectedCameraId;
-
-                    return (
-                      <button
-                        key={props.id}
-                        type="button"
-                        style={cameraButtonStyle(isActive)}
-                        onClick={() => setSelectedCameraId(props.id)}
-                      >
-                        <div style={cameraNameStyle}>
-                          {props.camera_name || "Без названия"}
-                        </div>
-
-                        <div style={cameraMetaStyle}>
-                          <div>ID камеры: {props.camera_id || "—"}</div>
-                          <div>Видео: {props.videos_count ?? 0}</div>
-                          <div>
-                            Координаты: {props.camera_latitude ?? "—"},{" "}
-                            {props.camera_longitude ?? "—"}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+            <div style={statsStyle}>
+              Найдено камер: <b>{stats.total}</b>
+              <br />
+              Камер с видео: <b>{stats.withVideo}</b>
+              <br />
+              Всего видео: <b>{stats.videos}</b>
             </div>
 
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Видео по выбранной камере</h2>
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Поиск по названию</label>
+              <input
+                style={inputStyle}
+                type="text"
+                placeholder="Например: камера 1"
+                value={draftFilters.search}
+                onChange={(e) => handleDraftChange("search", e.target.value)}
+              />
+            </div>
 
-              {selectedCamera ? (
-                <>
-                  <div style={selectedCameraBoxStyle}>
-                    <h3 style={selectedCameraTitleStyle}>
-                      {selectedCamera.properties?.camera_name || "Без названия"}
-                    </h3>
-                    <p style={selectedCameraInfoStyle}>
-                      <strong>ID:</strong>{" "}
-                      {selectedCamera.properties?.camera_id || "—"}
-                      <br />
-                      <strong>Количество видео:</strong>{" "}
-                      {selectedCamera.properties?.videos_count ?? 0}
-                      <br />
-                      <strong>Широта:</strong>{" "}
-                      {selectedCamera.properties?.camera_latitude ?? "—"}
-                      <br />
-                      <strong>Долгота:</strong>{" "}
-                      {selectedCamera.properties?.camera_longitude ?? "—"}
-                    </p>
-                  </div>
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Минимум видео</label>
+              <input
+                style={inputStyle}
+                type="number"
+                min="0"
+                placeholder="0"
+                value={draftFilters.minVideos}
+                onChange={(e) => handleDraftChange("minVideos", e.target.value)}
+              />
+            </div>
 
-                  {selectedCameraVideos.length === 0 ? (
-                    <div style={emptyStyle}>
-                      Для этой камеры пока нет видео
-                    </div>
-                  ) : (
-                    <div style={videosGridStyle}>
-                      {selectedCameraVideos.map((video) => (
-                        <div key={video.id} style={videoCardStyle}>
-                          {video.preview_url ? (
-                            <img
-                              src={video.preview_url}
-                              alt={video.filename || "preview"}
-                              style={previewStyle}
-                            />
-                          ) : (
-                            <div style={previewStyle} />
-                          )}
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Максимум видео</label>
+              <input
+                style={inputStyle}
+                type="number"
+                min="0"
+                placeholder="10"
+                value={draftFilters.maxVideos}
+                onChange={(e) => handleDraftChange("maxVideos", e.target.value)}
+              />
+            </div>
 
-                          <div style={videoContentStyle}>
-                            <h3 style={videoTitleStyle}>
-                              {video.filename || "Без названия"}
-                            </h3>
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Модель</label>
+              <input
+                style={inputStyle}
+                type="text"
+                placeholder="Например: Hikvision"
+                value={draftFilters.model}
+                onChange={(e) => handleDraftChange("model", e.target.value)}
+              />
+            </div>
 
-                            <p style={videoMetaStyle}>
-                              <strong>Пользователь:</strong>{" "}
-                              {video.user_full_name || video.user_email || "—"}
-                            </p>
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Тип камеры</label>
+              <input
+                style={inputStyle}
+                type="text"
+                placeholder="Например: IP"
+                value={draftFilters.cameraType}
+                onChange={(e) => handleDraftChange("cameraType", e.target.value)}
+              />
+            </div>
 
-                            <p style={videoMetaStyle}>
-                              <strong>Email:</strong> {video.user_email || "—"}
-                            </p>
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Класс камеры</label>
+              <input
+                style={inputStyle}
+                type="text"
+                placeholder="Например: Городская"
+                value={draftFilters.cameraClass}
+                onChange={(e) => handleDraftChange("cameraClass", e.target.value)}
+              />
+            </div>
 
-                            <p style={videoMetaStyle}>
-                              <strong>Статус:</strong> {video.status || "—"}
-                            </p>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button type="button" style={primaryButtonStyle} onClick={handleApplyFilters}>
+                Применить
+              </button>
 
-                            <p style={videoMetaStyle}>
-                              <strong>Дата загрузки:</strong>{" "}
-                              {formatDate(video.uploaded_at)}
-                            </p>
-
-                            <div style={videoActionsStyle}>
-                              {video.video_url ? (
-                                <a
-                                  href={video.video_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={linkButtonStyle}
-                                >
-                                  Смотреть видео
-                                </a>
-                              ) : null}
-
-                              {video.preview_url ? (
-                                <a
-                                  href={video.preview_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={ghostLinkButtonStyle}
-                                >
-                                  Открыть превью
-                                </a>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={emptyStyle}>Выбери камеру слева</div>
-              )}
+              <button type="button" style={secondaryButtonStyle} onClick={handleResetFilters}>
+                Сбросить
+              </button>
             </div>
           </div>
-        )}
+
+          <div style={mapCardStyle}>
+            {loading ? (
+              <div style={loadingStyle}>Загрузка карты и камер...</div>
+            ) : (
+              <MapContainer
+                center={[55.751244, 37.618423]}
+                zoom={11}
+                style={{
+                  height: "78vh",
+                  width: "100%",
+                  borderRadius: "14px",
+                }}
+              >
+                <TileLayer
+                  attribution='&copy; OpenStreetMap contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+
+                {features.map((feature) => {
+                  const props = getFeatureProps(feature);
+                  const coords = feature?.geometry?.coordinates || [];
+                  const longitude = coords[0];
+                  const latitude = coords[1];
+
+                  if (
+                    typeof latitude !== "number" ||
+                    typeof longitude !== "number"
+                  ) {
+                    return null;
+                  }
+
+                  return (
+                    <Marker
+                      key={props.id || props.camera_id || `${latitude}-${longitude}`}
+                      position={[latitude, longitude]}
+                    >
+                      <Popup>
+                        <div>
+                          <div style={popupTitleStyle}>
+                            {props.camera_name || "Без названия"}
+                          </div>
+
+                          <div style={popupLineStyle}>
+                            <b>ID:</b> {props.camera_id || "—"}
+                          </div>
+
+                          <div style={popupLineStyle}>
+                            <b>Видео:</b> {props.videos_count || 0}
+                          </div>
+
+                          {props.model ? (
+                            <div style={popupLineStyle}>
+                              <b>Модель:</b> {props.model}
+                            </div>
+                          ) : null}
+
+                          {props.camera_type ? (
+                            <div style={popupLineStyle}>
+                              <b>Тип:</b> {props.camera_type}
+                            </div>
+                          ) : null}
+
+                          {props.camera_class ? (
+                            <div style={popupLineStyle}>
+                              <b>Класс:</b> {props.camera_class}
+                            </div>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            style={popupButtonStyle}
+                            onClick={() => onOpenLocation(feature)}
+                          >
+                            Открыть локацию
+                          </button>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

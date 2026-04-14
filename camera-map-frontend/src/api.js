@@ -3,32 +3,32 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 async function parseError(response, defaultMessage) {
   try {
     const data = await response.json();
-    return data?.detail || defaultMessage;
-  } catch {
+
+    if (typeof data?.detail === "string") {
+      return data.detail;
+    }
+
+    if (Array.isArray(data?.detail)) {
+      return data.detail.map((item) => item?.msg || JSON.stringify(item)).join(", ");
+    }
+
+    if (typeof data?.message === "string") {
+      return data.message;
+    }
+
     return defaultMessage;
+  } catch {
+    try {
+      const text = await response.text();
+      return text || defaultMessage;
+    } catch {
+      return defaultMessage;
+    }
   }
-}
-
-// ===== AUTH =====
-
-export async function loginUser(payload) {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка входа"));
-  }
-
-  return res.json();
 }
 
 export async function registerUser(payload) {
-  const res = await fetch(`${API_URL}/auth/register`, {
+  const response = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -36,32 +36,44 @@ export async function registerUser(payload) {
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка регистрации"));
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Ошибка регистрации"));
   }
 
-  return res.json();
+  return response.json();
+}
+
+export async function loginUser(payload) {
+  const response = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Ошибка входа"));
+  }
+
+  return response.json();
 }
 
 export async function getMe(token) {
-  const res = await fetch(`${API_URL}/auth/me`, {
+  const realToken = token || localStorage.getItem("access_token") || "";
+
+  const response = await fetch(`${API_URL}/auth/me`, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${realToken}`,
     },
   });
 
-  if (res.status === 401) {
-    throw new Error("INVALID_TOKEN");
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Не удалось загрузить профиль"));
   }
 
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка получения пользователя"));
-  }
-
-  return res.json();
+  return response.json();
 }
-
-// ===== CAMERAS =====
 
 export async function getCamerasGeoJson(params = {}) {
   const searchParams = new URLSearchParams();
@@ -70,58 +82,107 @@ export async function getCamerasGeoJson(params = {}) {
     searchParams.set("search", params.search);
   }
 
-  if (params.min_videos !== undefined && params.min_videos !== null && params.min_videos !== "") {
-    searchParams.set("min_videos", String(params.min_videos));
+  if (params.hasVideo === true) {
+    searchParams.set("has_video", "true");
   }
 
-  const queryString = searchParams.toString();
-  const url = queryString
-    ? `${API_URL}/cameras/geojson?${queryString}`
+  if (params.minVideos !== undefined && params.minVideos !== null && params.minVideos !== "") {
+    searchParams.set("min_videos", String(params.minVideos));
+  }
+
+  const query = searchParams.toString();
+  const url = query
+    ? `${API_URL}/cameras/geojson?${query}`
     : `${API_URL}/cameras/geojson`;
 
-  const res = await fetch(url);
+  const response = await fetch(url);
 
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка получения камер"));
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Не удалось загрузить камеры"));
   }
 
-  return res.json();
+  return response.json();
 }
 
-// ===== VIDEOS =====
-
 export async function getVideos(token) {
-  const res = await fetch(`${API_URL}/videos`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const realToken = token || localStorage.getItem("access_token") || "";
+
+  const response = await fetch(`${API_URL}/videos/`, {
+    headers: realToken
+      ? {
+          Authorization: `Bearer ${realToken}`,
+        }
+      : {},
   });
 
-  if (res.status === 401) {
-    throw new Error("INVALID_TOKEN");
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Не удалось загрузить видео"));
   }
 
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка получения видео"));
+  return response.json();
+}
+
+export async function uploadVideo({ token, file, cameraId, latitude, longitude }) {
+  const realToken = token || localStorage.getItem("access_token") || "";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  if (cameraId) {
+    formData.append("camera_id", cameraId);
   }
 
-  return res.json();
+  if (latitude !== undefined && latitude !== null && latitude !== "") {
+    formData.append("latitude", String(latitude));
+  }
+
+  if (longitude !== undefined && longitude !== null && longitude !== "") {
+    formData.append("longitude", String(longitude));
+  }
+
+  const response = await fetch(`${API_URL}/videos/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${realToken}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Ошибка загрузки видео"));
+  }
+
+  return response.json();
+}
+
+export async function uploadVideoForCamera({
+  token,
+  file,
+  cameraId,
+  latitude,
+  longitude,
+}) {
+  return uploadVideo({
+    token,
+    file,
+    cameraId,
+    latitude,
+    longitude,
+  });
 }
 
 export async function deleteVideo(videoId, token) {
-  const res = await fetch(`${API_URL}/videos/${videoId}`, {
+  const realToken = token || localStorage.getItem("access_token") || "";
+
+  const response = await fetch(`${API_URL}/videos/${videoId}`, {
     method: "DELETE",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${realToken}`,
     },
   });
 
-  if (res.status === 401) {
-    throw new Error("INVALID_TOKEN");
-  }
-
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Ошибка удаления видео"));
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Ошибка удаления видео"));
   }
 
   return true;
