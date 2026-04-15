@@ -1,125 +1,107 @@
-# КАРТА С КАМЕРАМИ И ВИДЕО
+# Camera Map Video
 
-Backend-сервис для отображения камер на карте, загрузки видео и привязки их к локациям.
+Веб-приложение для работы с камерами видеонаблюдения и пользовательскими видео.  
+Система позволяет отображать камеры на карте, загружать видео, привязывать их к камерам и просматривать результаты.
+
+---
+
+## Описание проекта
+
+Проект реализует backend и frontend части системы для работы с географически привязанными видеоданными.
+
+Основные возможности:
+- авторизация и регистрация пользователей
+- отображение камер на карте
+- загрузка и хранение видео
+- привязка видео к камерам
+- просмотр списка видео
+- получение данных в формате GeoJSON для отображения на карте
+
+---
+
+## Архитектура
+
+Проект построен по принципу слоистой архитектуры:
+
+- API слой (роутеры) — обработка HTTP-запросов
+- Service Layer — бизнес-логика
+- Repository Layer — работа с базой данных
+- Infrastructure — интеграция с внешними сервисами (MinIO, Redis)
+
+Используются принципы:
+- разделение ответственности (SRP)
+- низкая связанность компонентов
+- Dependency Injection
 
 ---
 
 ## Стек технологий
 
+### Backend
 - FastAPI
-- PostgreSQL
 - SQLAlchemy (async)
+- PostgreSQL
 - Alembic
 - Redis
 - MinIO (S3)
-- JWT (access + refresh)
-- Docker / Docker Compose
+- JWT (python-jose)
+
+### Frontend
+- React
+- Vite
+- Leaflet
+
+### Инфраструктура
+- Docker
+- Docker Compose
 
 ---
 
-## Функционал
+## Основной функционал
 
 ### Авторизация
-- Регистрация пользователя
-- Логин
-- JWT (access + refresh токены)
-- Получение текущего пользователя (/auth/me)
+- регистрация пользователя
+- вход в систему
+- JWT + Refresh token
+- получение текущего пользователя
 
-### Видео
-- Создание записи о видео
-- Загрузка видео файла
-- Получение списка видео
-- Привязка видео к камере
+### Работа с камерами
+- получение списка камер
+- получение GeoJSON для отображения на карте
+- отображение информации о камере (координаты, наличие видео)
 
-### Камеры
-- Хранение камер в базе данных
-- Подготовка данных для карты (GeoJSON)
-- Определение наличия видео у камеры (has_video)
+### Работа с видео
+- загрузка видео (формат mp4)
+- хранение файлов в MinIO
+- привязка видео к камере
+- получение списка видео
 
----
-
-## Запуск проекта
-
-### 1. Клонировать репозиторий
-git clone <your-repo-url>
-cd camera-map-video
-
-### 2. Создать .env
-
-POSTGRES_DB=app  
-POSTGRES_USER=postgres  
-POSTGRES_PASSWORD=postgres  
-
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/app  
-REDIS_URL=redis://redis:6379/0  
-
-MINIO_ENDPOINT=minio:9000  
-MINIO_ACCESS_KEY=minioadmin  
-MINIO_SECRET_KEY=minioadmin  
-MINIO_BUCKET_VIDEOS=videos  
-MINIO_BUCKET_PREVIEWS=previews  
-
-JWT_SECRET_KEY=supersecret  
-JWT_REFRESH_SECRET_KEY=supersecret_refresh  
-JWT_ALGORITHM=HS256  
-
-ACCESS_TOKEN_EXPIRE_MINUTES=30  
-REFRESH_TOKEN_EXPIRE_DAYS=7  
-
----
-
-### 3. Запуск
-
-docker compose up -d --build
-
-### 4. Миграции
-
-docker compose exec api alembic upgrade head
+### Личный кабинет
+- информация о пользователе
+- список загруженных видео
 
 ---
 
 ## API
 
-http://localhost:8000/docs
-
----
-
-## Основные эндпоинты
-
 ### Auth
-POST /auth/register  
-POST /auth/login  
-GET /auth/me  
-
-### Videos
-POST /videos/  
-GET /videos/  
-POST /videos/upload  
+- POST /auth/register
+- POST /auth/login
+- GET /auth/me
 
 ### Cameras
-GET /cameras/  
-GET /cameras/map  
+- GET /cameras/
+- GET /cameras/geojson
+
+### Videos
+- POST /videos/upload
+- GET /videos/
 
 ---
 
-## Важно
+## Запуск проекта
 
-- Authorization: Bearer <token>
-- Видео привязываются к камерам
-- Камеры отображаются на карте
-
----
-
-## Статус
-
-Реализовано:
-- авторизация
-- пользователи
-- видео
-- docker окружение
-
-В работе:
-- GeoJSON
-- Redis
-- preview
-- очередь обработки
+### Клонирование репозитория
+```bash
+git clone https://github.com/arrdt11-dev/camera-map-video.git
+cd camera-map-video
